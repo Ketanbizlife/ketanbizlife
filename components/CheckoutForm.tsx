@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { parsePhoneNumberFromString } from "libphonenumber-js";
-import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
 import { load, type Cashfree } from "@cashfreepayments/cashfree-js";
-import type { ClientConfig, CheckoutBump } from "@/client.config";
+import type { ClientConfig } from "@/client.config";
 import { setMetaAdvancedMatching, trackPurchasePixel } from "@/lib/analytics";
 import { readCookie, readUtmFromStorage, utmToQueryString } from "@/lib/utm";
+import { readLead } from "@/lib/lead";
+import { COUNTRY_CODES } from "@/lib/countryCodes";
 import type {
   CashfreeMode,
   CreateOrderResponse,
@@ -19,6 +21,8 @@ import styles from "./CheckoutForm.module.css";
 interface Props {
   config: ClientConfig;
   mode: CashfreeMode;
+  /** Bump IDs selected on the OTO page and passed via the checkout URL. */
+  initialBumpIds: string[];
 }
 
 interface FormState {
@@ -76,70 +80,69 @@ function validate(state: FormState): FieldErrors {
   return errors;
 }
 
-export function CheckoutForm({ config, mode }: Props) {
+export function CheckoutForm({ config, mode, initialBumpIds }: Props) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement | null>(null);
   const [state, setState] = useState<FormState>(initialState);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
-  const reduceMotion = useReducedMotion();
 
-  /** Selected bump IDs. Bundle bump deselects individual bumps and vice versa. */
-  const [selectedBumps, setSelectedBumps] = useState<Set<string>>(new Set());
+  // Selection is locked in from the OTO page — the checkout is a confirm+pay
+  // step. To change tools, the user goes back to /free/oto.
+  const selectedItems = useMemo(() => {
+    const ids = new Set(initialBumpIds);
+    return config.checkout.bumps.filter((b) => ids.has(b.id));
+  }, [config.checkout.bumps, initialBumpIds]);
 
-  /** Which bump card is currently expanded. Only one open at a time. */
-  const [expandedBump, setExpandedBump] = useState<string | null>(null);
+  const selectedBumpIds = useMemo(
+    () => selectedItems.map((b) => b.id),
+    [selectedItems],
+  );
 
-  function toggleBump(bumpId: string, isBundle: boolean) {
-    setSelectedBumps((prev) => {
-      const next = new Set(prev);
-      if (next.has(bumpId)) {
-        next.delete(bumpId);
-        return next;
-      }
-      if (isBundle) {
-        return new Set([bumpId]);
-      }
-      const bundleId = config.checkout.bumps.find((b) => b.isBundle)?.id;
-      if (bundleId) next.delete(bundleId);
-      next.add(bumpId);
-      return next;
-    });
-  }
+  // OTO has no base price — the grand total is the sum of selected add-ons.
+  const grandTotal = useMemo(
+    () => selectedItems.reduce((sum, b) => sum + b.price, 0),
+    [selectedItems],
+  );
 
-  function toggleExpanded(bumpId: string) {
-    setExpandedBump((prev) => (prev === bumpId ? null : bumpId));
-  }
+  const hasItems = selectedItems.length > 0;
 
-  /**
-   * Sort bumps so selected items appear first, in selection order.
-   * Bundle is pinned to the bottom of unselected list as a "value upsell".
-   */
-  const orderedBumps = useMemo(() => {
-    const all = config.checkout.bumps;
-    const selected: CheckoutBump[] = [];
-    const unselected: CheckoutBump[] = [];
-    for (const b of all) {
-      if (selectedBumps.has(b.id)) selected.push(b);
-      else unselected.push(b);
-    }
-    // Push bundle to the end of unselected so it reads as the "go big" option.
-    unselected.sort((a, b) => Number(!!a.isBundle) - Number(!!b.isBundle));
-    return [...selected, ...unselected];
-  }, [config.checkout.bumps, selectedBumps]);
+  // Anchor / savings: the bundle's "value" is the sum of the 3 individual
+  // tools, so we can show a struck-through original price + "you save".
+  const individualSum = useMemo(
+    () =>
+      config.checkout.bumps
+        .filter((b) => !b.isBundle)
+        .reduce((s, b) => s + b.price, 0),
+    [config.checkout.bumps],
+  );
+  const anchorTotal = useMemo(
+    () =>
+      selectedItems.reduce(
+        (sum, b) => sum + (b.isBundle ? individualSum : b.price),
+        0,
+      ),
+    [selectedItems, individualSum],
+  );
+  const savings = anchorTotal - grandTotal;
 
-  const bumpsTotal = useMemo(() => {
-    return config.checkout.bumps
-      .filter((b) => selectedBumps.has(b.id))
-      .reduce((sum, b) => sum + b.price, 0);
-  }, [config.checkout.bumps, selectedBumps]);
+  // Prefill from the registrant's stored details (editable). Client-only mount
+  // effect to avoid an SSR hydration mismatch.
+  useEffect(() => {
+    const lead = readLead();
+    if (!lead) return;
+    setState((prev) => ({
+      firstName: lead.firstName || prev.firstName,
+      lastName: lead.lastName || prev.lastName,
+      email: lead.email || prev.email,
+      countryCode: lead.dialCode || prev.countryCode,
+      phone: lead.phone || prev.phone,
+      city: lead.city || prev.city,
+    }));
+  }, []);
 
-  const grandTotal = config.pricing.price + bumpsTotal;
-
-  // Lazy-load the Cashfree v3 SDK once on mount. `load()` injects the
-  // sdk.cashfree.com script tag and resolves with the Cashfree factory; we
-  // call it with our mode to get back the instance used to open the modal.
+  // Lazy-load the Cashfree v3 SDK once on mount.
   const cashfreeRef = useRef<Cashfree | null>(null);
   const [sdkReady, setSdkReady] = useState(false);
   useEffect(() => {
@@ -160,27 +163,18 @@ export function CheckoutForm({ config, mode }: Props) {
     };
   }, [mode]);
 
-  // Fire Meta Manual Advanced Matching as soon as the form is fully
-  // filled + valid — independent of whether the user actually pays.
-  // Pre-hashed identity is written to the kbl_mam cookie (30-day TTL)
-  // and attached to the pixel, so every subsequent PageView (this page,
-  // /thank-you, any return visit within 30 days) carries full hashed
-  // identity. Debounced 500ms so we don't fire mid-typing.
-  //
-  // This is purely additive — the payment-success path still re-fires
-  // MAM with the latest values + writes the cookie again.
+  // Fire Meta Manual Advanced Matching once the form is valid (debounced).
   useEffect(() => {
     if (typeof window === "undefined") return;
     const fullPhone = `${state.countryCode}${state.phone.trim()}`;
-    const fieldsFilled =
+    const filled =
       state.firstName.trim() &&
       state.lastName.trim() &&
       state.email.trim() &&
       state.phone.trim() &&
       state.city.trim();
-    if (!fieldsFilled) return;
-    const validationErrors = validate(state);
-    if (Object.keys(validationErrors).length > 0) return;
+    if (!filled) return;
+    if (Object.keys(validate(state)).length > 0) return;
 
     const timer = window.setTimeout(() => {
       void setMetaAdvancedMatching({
@@ -208,24 +202,25 @@ export function CheckoutForm({ config, mode }: Props) {
     e.preventDefault();
     setGlobalError(null);
 
+    if (!hasItems || grandTotal <= 0) {
+      setGlobalError("Your order is empty. Go back and add at least one tool.");
+      return;
+    }
+
     const fieldErrors = validate(state);
     setErrors(fieldErrors);
     if (Object.keys(fieldErrors).length > 0) {
-      // Scroll first invalid field into view for better mobile UX
       const firstInvalid = Object.keys(fieldErrors)[0];
       const el = document.querySelector(`[data-field="${firstInvalid}"]`);
       if (el instanceof HTMLElement) {
         el.scrollIntoView({ behavior: "smooth", block: "center" });
-        const input = el.querySelector("input");
-        if (input) input.focus();
+        el.querySelector("input")?.focus();
       }
       return;
     }
 
     if (!sdkReady || !cashfreeRef.current) {
-      setGlobalError(
-        "Payment is loading — please wait a moment and try again.",
-      );
+      setGlobalError("Payment is loading — please wait a moment and try again.");
       return;
     }
 
@@ -240,7 +235,6 @@ export function CheckoutForm({ config, mode }: Props) {
       countryCode: "IN",
       city: state.city.trim(),
     };
-    const selectedBumpIds = Array.from(selectedBumps);
     const utm = readUtmFromStorage(config.funnel.sessionStorageKey);
     const fbc = readCookie("_fbc");
     const fbp = readCookie("_fbp");
@@ -261,10 +255,6 @@ export function CheckoutForm({ config, mode }: Props) {
           customer,
           selectedBumpIds,
           utm,
-          // Snapshot browser context so the Cashfree webhook can fire CAPI
-          // with full server-context. Without this the webhook would ship
-          // events with blank IP/UA/fbc/fbp and tank EMQ. The server packs
-          // these into Cashfree order_tags inside create-order.
           fbc,
           fbp,
           fbclid,
@@ -282,19 +272,12 @@ export function CheckoutForm({ config, mode }: Props) {
       const order: CreateOrderResponse = await orderRes.json();
 
       const cashfree = cashfreeRef.current;
-      if (!cashfree) {
-        throw new Error("Cashfree SDK unavailable");
-      }
+      if (!cashfree) throw new Error("Cashfree SDK unavailable");
 
-      // Open the modal overlay. The Promise resolves when the modal closes
-      // for any reason (success, failure, user dismissal). We can't trust
-      // its return value to determine success — only our verify endpoint
-      // (which queries Cashfree's API) is authoritative.
       const result = await cashfree.checkout({
         paymentSessionId: order.paymentSessionId,
         redirectTarget: "_modal",
       });
-
       if (result?.error) {
         console.warn("[checkout] cashfree modal returned error", result.error);
       }
@@ -302,15 +285,6 @@ export function CheckoutForm({ config, mode }: Props) {
       const verifyRes = await fetch("/api/cashfree/verify-payment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // keepalive: true still matters for the /thank-you transition —
-        // it keeps this fetch alive at the OS layer when the user is
-        // closing the tab or backgrounding the browser, so the server
-        // can finish polling Cashfree and reply. The Pabbly + CAPI side-
-        // effects are no longer here (they fire from the Cashfree webhook
-        // unconditionally), but we still need a confirmed response before
-        // we can route to /thank-you.
-        //
-        // Spec: https://fetch.spec.whatwg.org/#dom-requestinit-keepalive
         keepalive: true,
         body: JSON.stringify({
           orderId: order.orderId,
@@ -347,29 +321,11 @@ export function CheckoutForm({ config, mode }: Props) {
         return;
       }
 
-      // Browser-side Meta firing must mirror the server CAPI gate
-      // EXACTLY, or Meta's dedup pair breaks:
-      //  - Domain gate is implicit (window.fbq is only defined when our
-      //    gated pixel init script ran — i.e. on export.ketanbizlife.in).
-      //  - Mode gate: order.mode is "production" only when CASHFREE_API_MODE=production.
-      //  - Amount gate: matches the server-side `grandTotal > 1` rule.
-      // If we skip either gate, the browser Purchase fires without a
-      // server CAPI pair and Meta counts it as a real conversion (plus
-      // MAM pollutes our pixel matching memory with test buyers).
-      const fireMetaBrowserEvents =
-        order.mode === "production" && grandTotal > 1;
-
+      // Browser Meta events mirror the server CAPI gate: production mode +
+      // amount > ₹1. fbq is only defined on the prod domain, so this also
+      // no-ops on localhost / preview.
+      const fireMetaBrowserEvents = order.mode === "production" && grandTotal > 1;
       if (fireMetaBrowserEvents) {
-        // Manual Advanced Matching — set buyer identity on the pixel
-        // BEFORE the route change. Meta's auto-PageView fires on every
-        // SPA navigation, so MAM must be wired on the current pixel
-        // context before /thank-you's PageView goes out.
-        //
-        // AWAIT here so the Web Crypto hashing + fbq init + cookie write
-        // all complete before we queue the next pixel event (Purchase)
-        // and before router.push triggers /thank-you's PageView. Without
-        // the await, trackPurchasePixel can fire on the pixel queue
-        // before MAM lands, costing us EMQ on the browser Purchase event.
         await setMetaAdvancedMatching({
           email: customer.email,
           phone: customer.phone,
@@ -378,33 +334,30 @@ export function CheckoutForm({ config, mode }: Props) {
           city: customer.city,
           country: customer.countryCode,
         });
-
-        // ─────────────────────────────────────────────────────────────────
-        // TEMPORARILY DISABLED for new-pixel/CAPI dataset test (only Purchase
-        // server-side + PageView browser-side should fire). Uncomment to
-        // revert to the dual-fire pattern below when switching back to the
-        // original pixel/CAPI dataset.
-        // ─────────────────────────────────────────────────────────────────
-        // Browser-side standard `Purchase` paired with the server CAPI
-        // Purchase via matching eventID (= cf_payment_id). Meta dedupes
-        // them within 48h → counted as one Purchase. Without this pair,
-        // Meta's Auto Event Detection synthesises uncontrolled Purchase
-        // events with no eventID and inflates counts. MAM (above) fires
-        // first so this event inherits hashed identity for 9+/10 EMQ.
-        // if (verified.paymentId) {
-        //   trackPurchasePixel({
-        //     paymentId: verified.paymentId,
-        //     value: grandTotal,
-        //     currency: config.brand.currency ?? "INR",
-        //     contentName: `${config.brand.name} Webinar`,
-        //   });
-        // }
+        // Browser-side `Purchase` (+ custom OTOPurchase) paired with the
+        // server CAPI Purchase via matching eventID (= cf_payment_id). Meta
+        // dedupes within 48h → counted once. MAM (above) fires first so this
+        // event inherits hashed identity for high EMQ. These are the OTO's own
+        // events (distinct from the old paid-funnel Purchase), so they don't
+        // interfere with any old-funnel pixel/CAPI dataset test.
+        if (verified.paymentId) {
+          trackPurchasePixel({
+            paymentId: verified.paymentId,
+            value: grandTotal,
+            standardEvent: config.capi.otoStandardEvent,
+            customEvent: config.capi.otoCustomEvent,
+            currency: config.brand.currency ?? "INR",
+            contentName: `${config.brand.name} Export Toolkit`,
+          });
+        }
       }
 
-      const utmQs = utmToQueryString(utm);
-      router.push(
-        `/thank-you?slug=${encodeURIComponent(config.funnel.slug)}${utmQs}`,
-      );
+      // Route to the dedicated OTO thank-you (/free/oto/thank-you), carrying the
+      // purchased tool IDs (so it confirms exactly what they bought) + UTM.
+      // utmToQueryString returns a leading "&", so it appends cleanly after bumps.
+      const bumpsParam = `bumps=${encodeURIComponent(selectedBumpIds.join(","))}`;
+      const query = `?${bumpsParam}${utmToQueryString(utm)}`;
+      router.push(`/${config.funnel.slug}/oto/thank-you${query}`);
     } catch (err) {
       console.error("[checkout] order error", err);
       setGlobalError(
@@ -416,329 +369,239 @@ export function CheckoutForm({ config, mode }: Props) {
 
   return (
     <>
-      <form
-        ref={formRef}
-        className={styles.form}
-        onSubmit={handleSubmit}
-        noValidate
-      >
-        {/* ============= YOUR DETAILS (form first for conversion) ============= */}
-        <h3 className={styles.sectionLabel}>Your details</h3>
+      <div className={styles.grid}>
+        {/* ============= FORM COLUMN ============= */}
+        <div className={styles.formCol}>
+          <form
+            ref={formRef}
+            className={styles.form}
+            onSubmit={handleSubmit}
+            noValidate
+          >
+            <h3 className={styles.sectionLabel}>Your details</h3>
+            <p className={styles.formHint}>
+              Your tools are delivered to this email &amp; WhatsApp number right
+              after payment.
+            </p>
 
-        <div className={styles.row}>
-          <Field
-            label="First name"
-            value={state.firstName}
-            error={errors.firstName}
-            onChange={(v) => update("firstName", v)}
-            onBlur={() => handleBlur("firstName")}
-            autoComplete="given-name"
-            fieldKey="firstName"
-            required
-          />
-          <Field
-            label="Last name"
-            value={state.lastName}
-            error={errors.lastName}
-            onChange={(v) => update("lastName", v)}
-            onBlur={() => handleBlur("lastName")}
-            autoComplete="family-name"
-            fieldKey="lastName"
-            required
-          />
-        </div>
+            <div className={styles.row}>
+              <Field
+                label="First name"
+                value={state.firstName}
+                error={errors.firstName}
+                onChange={(v) => update("firstName", v)}
+                onBlur={() => handleBlur("firstName")}
+                autoComplete="given-name"
+                fieldKey="firstName"
+                required
+              />
+              <Field
+                label="Last name"
+                value={state.lastName}
+                error={errors.lastName}
+                onChange={(v) => update("lastName", v)}
+                onBlur={() => handleBlur("lastName")}
+                autoComplete="family-name"
+                fieldKey="lastName"
+                required
+              />
+            </div>
 
-        <Field
-          label="Email"
-          type="email"
-          value={state.email}
-          error={errors.email}
-          onChange={(v) => update("email", v)}
-          onBlur={() => handleBlur("email")}
-          autoComplete="email"
-          inputMode="email"
-          fieldKey="email"
-          required
-        />
-
-        <div className={`${styles.row} ${styles.phoneRow}`}>
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="countryCode">
-              Code
-            </label>
-            <select
-              id="countryCode"
-              className={styles.select}
-              value={state.countryCode}
-              onChange={(e) => update("countryCode", e.target.value)}
-            >
-              <option value="+91">+91 (IN)</option>
-              <option value="+971">+971 (AE)</option>
-              <option value="+1">+1 (US)</option>
-              <option value="+44">+44 (UK)</option>
-              <option value="+65">+65 (SG)</option>
-            </select>
-          </div>
-          <div className={styles.phoneField}>
             <Field
-              label="Phone (WhatsApp)"
-              type="tel"
-              value={state.phone}
-              error={errors.phone}
-              onChange={(v) => update("phone", v)}
-              onBlur={() => handleBlur("phone")}
-              autoComplete="tel"
-              inputMode="tel"
-              fieldKey="phone"
+              label="Email"
+              type="email"
+              value={state.email}
+              error={errors.email}
+              onChange={(v) => update("email", v)}
+              onBlur={() => handleBlur("email")}
+              autoComplete="email"
+              inputMode="email"
+              fieldKey="email"
               required
             />
-          </div>
-        </div>
 
-        <Field
-          label="City"
-          value={state.city}
-          error={errors.city}
-          onChange={(v) => update("city", v)}
-          onBlur={() => handleBlur("city")}
-          autoComplete="address-level2"
-          fieldKey="city"
-          required
-        />
-
-        {/* ============= BUMPS (collapsible, checked-first sort) ============= */}
-        <div className={styles.bumpsWrap}>
-          <div className={styles.bumpsHeading}>
-            <h3 className={styles.sectionLabel}>Smart add-ons (optional)</h3>
-            <span className={styles.bumpsCount}>
-              {selectedBumps.size} selected
-            </span>
-          </div>
-          <p className={styles.bumpsSub}>
-            Tap a card to see what&apos;s inside. Check the box to add it.
-          </p>
-
-          <LayoutGroup>
-            <motion.ul className={styles.bumpList} role="list" layout>
-              <AnimatePresence initial={false}>
-                {orderedBumps.map((bump) => {
-                  const checked = selectedBumps.has(bump.id);
-                  const expanded = expandedBump === bump.id;
-                  return (
-                    <motion.li
-                      key={bump.id}
-                      layout
-                      initial={
-                        reduceMotion ? false : { opacity: 0, y: 8 }
-                      }
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{
-                        layout: { duration: 0.32, ease: [0.23, 1, 0.32, 1] },
-                        duration: 0.28,
-                        ease: [0.23, 1, 0.32, 1],
-                      }}
-                      className={`${styles.bump} ${checked ? styles.bumpChecked : ""} ${bump.isBundle ? styles.bumpBundle : ""}`}
-                    >
-                      {/* Header row — always visible. Click toggles expansion.
-                          Checkbox click stops propagation so it doesn't expand. */}
-                      <button
-                        type="button"
-                        className={styles.bumpHeader}
-                        onClick={() => toggleExpanded(bump.id)}
-                        aria-expanded={expanded}
-                        aria-controls={`bump-panel-${bump.id}`}
-                      >
-                        <span
-                          className={styles.bumpBox}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleBump(bump.id, !!bump.isBundle);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === " " || e.key === "Enter") {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              toggleBump(bump.id, !!bump.isBundle);
-                            }
-                          }}
-                          role="checkbox"
-                          aria-checked={checked}
-                          tabIndex={0}
-                        >
-                          {checked ? <Icon name="check" size={14} /> : null}
-                        </span>
-
-                        <div className={styles.bumpHeaderText}>
-                          <div className={styles.bumpHeaderTop}>
-                            <span className={styles.bumpTagline}>
-                              {bump.tagline}
-                            </span>
-                            <span className={styles.bumpPrice}>
-                              ₹{bump.price}
-                            </span>
-                          </div>
-                          <h4 className={styles.bumpTitle}>{bump.title}</h4>
-                        </div>
-
-                        <span
-                          className={`${styles.bumpChevron} ${expanded ? styles.bumpChevronOpen : ""}`}
-                          aria-hidden="true"
-                        >
-                          <svg
-                            viewBox="0 0 24 24"
-                            width="16"
-                            height="16"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.8"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M6 9l6 6 6-6" />
-                          </svg>
-                        </span>
-                      </button>
-
-                      {/* Expanded body */}
-                      <AnimatePresence initial={false}>
-                        {expanded ? (
-                          <motion.div
-                            id={`bump-panel-${bump.id}`}
-                            key="panel"
-                            initial={
-                              reduceMotion
-                                ? false
-                                : { height: 0, opacity: 0 }
-                            }
-                            animate={{ height: "auto", opacity: 1 }}
-                            exit={
-                              reduceMotion
-                                ? { opacity: 0 }
-                                : { height: 0, opacity: 0 }
-                            }
-                            transition={{
-                              duration: 0.32,
-                              ease: [0.23, 1, 0.32, 1],
-                            }}
-                            className={styles.bumpPanel}
-                          >
-                            <div className={styles.bumpPanelInner}>
-                              <p className={styles.bumpIntro}>{bump.intro}</p>
-                              <ul className={styles.bumpBullets}>
-                                {bump.bullets.map((b, j) => (
-                                  <li key={j}>
-                                    <span
-                                      className={styles.bumpTick}
-                                      aria-hidden="true"
-                                    >
-                                      <Icon name="check" size={12} />
-                                    </span>
-                                    <span>{b}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                              {bump.insight ? (
-                                <p className={styles.bumpInsight}>
-                                  <span
-                                    className={styles.bumpInsightIcon}
-                                    aria-hidden="true"
-                                  >
-                                    <Icon name="lightbulb" size={14} />
-                                  </span>
-                                  <span>{bump.insight}</span>
-                                </p>
-                              ) : null}
-                              {bump.callToAction ? (
-                                <p className={styles.bumpCta}>
-                                  <span
-                                    className={styles.bumpCtaIcon}
-                                    aria-hidden="true"
-                                  >
-                                    <Icon name="arrow-right" size={14} />
-                                  </span>
-                                  <span>{bump.callToAction}</span>
-                                </p>
-                              ) : null}
-                            </div>
-                          </motion.div>
-                        ) : null}
-                      </AnimatePresence>
-                    </motion.li>
-                  );
-                })}
-              </AnimatePresence>
-            </motion.ul>
-          </LayoutGroup>
-        </div>
-
-        {/* ============= LIVE TOTAL ============= */}
-        <div className={styles.totalCard}>
-          <div className={styles.totalLine}>
-            <span>Webinar registration</span>
-            <span className={styles.totalLineValue}>
-              ₹{config.pricing.price}
-            </span>
-          </div>
-          {bumpsTotal > 0 ? (
-            <div className={styles.totalLine}>
-              <span>
-                Add-ons ({selectedBumps.size} selected)
-              </span>
-              <span className={styles.totalLineValue}>+ ₹{bumpsTotal}</span>
+            <div className={`${styles.row} ${styles.phoneRow}`}>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="countryCode">
+                  Code
+                </label>
+                <select
+                  id="countryCode"
+                  className={styles.select}
+                  value={state.countryCode}
+                  onChange={(e) => update("countryCode", e.target.value)}
+                >
+                  {COUNTRY_CODES.map((c) => (
+                    <option key={`${c.value}-${c.label}`} value={c.value}>
+                      {c.flag} {c.value} {c.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className={styles.phoneField}>
+                <Field
+                  label="Phone (WhatsApp)"
+                  type="tel"
+                  value={state.phone}
+                  error={errors.phone}
+                  onChange={(v) => update("phone", v)}
+                  onBlur={() => handleBlur("phone")}
+                  autoComplete="tel"
+                  inputMode="tel"
+                  fieldKey="phone"
+                  required
+                />
+              </div>
             </div>
-          ) : null}
-          <div className={styles.totalRow}>
-            <span>Total</span>
-            <span className={styles.totalAmount}>₹{grandTotal}</span>
-          </div>
+
+            <Field
+              label="City"
+              value={state.city}
+              error={errors.city}
+              onChange={(v) => update("city", v)}
+              onBlur={() => handleBlur("city")}
+              autoComplete="address-level2"
+              fieldKey="city"
+              required
+            />
+
+            {globalError ? (
+              <div role="alert" className={styles.alert}>
+                {globalError}
+              </div>
+            ) : null}
+
+            {/* Desktop pay button (mobile uses the sticky bar). */}
+            <button
+              type="submit"
+              className={styles.payButton}
+              disabled={submitting || !sdkReady || !hasItems}
+            >
+              {submitting ? (
+                <span className={styles.spinner} aria-hidden="true" />
+              ) : null}
+              <span>{submitting ? "Opening payment…" : `Pay ₹${grandTotal} securely`}</span>
+              {!submitting ? (
+                <span className={styles.payArrow} aria-hidden="true">→</span>
+              ) : null}
+            </button>
+
+            <p className={styles.disclaimer}>{config.oto.securityNote}</p>
+          </form>
         </div>
 
-        {globalError ? (
-          <div role="alert" className={styles.alert}>
-            {globalError}
+        {/* ============= ORDER SUMMARY COLUMN ============= */}
+        <aside className={styles.summaryCol} aria-label="Order summary">
+          <div className={styles.orderCard}>
+            <div className={styles.orderHead}>
+              <h3 className={styles.sectionLabel}>Order summary</h3>
+              <Link href={`/${config.funnel.slug}/oto`} className={styles.editLink}>
+                Edit
+              </Link>
+            </div>
+
+            {hasItems ? (
+              <ul className={styles.orderList}>
+                {selectedItems.map((b) => (
+                  <li key={b.id} className={styles.orderItem}>
+                    <span className={styles.orderThumb} aria-hidden="true">
+                      {b.image ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={b.image}
+                          alt=""
+                          className={styles.orderThumbImg}
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).style.display = "none";
+                          }}
+                        />
+                      ) : null}
+                    </span>
+                    <div className={styles.orderItemBody}>
+                      <span className={styles.orderItemTitle}>{b.title}</span>
+                      {b.otoTagline ? (
+                        <span className={styles.orderItemDesc}>{b.otoTagline}</span>
+                      ) : null}
+                    </div>
+                    <span className={styles.orderItemPrice}>₹{b.price}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className={styles.orderEmpty}>
+                <p>No tools selected.</p>
+                <Link
+                  href={`/${config.funnel.slug}/oto`}
+                  className={styles.orderEmptyLink}
+                >
+                  ← Back to choose your tools
+                </Link>
+              </div>
+            )}
+
+            {hasItems && savings > 0 ? (
+              <div className={styles.savingsRow}>
+                <span>Original value</span>
+                <span className={styles.savingsRight}>
+                  <s className={styles.savingsStrike}>₹{anchorTotal}</s>
+                  <span className={styles.savingsTag}>You save ₹{savings}</span>
+                </span>
+              </div>
+            ) : null}
+
+            <div className={styles.orderTotalRow}>
+              <span className={styles.orderTotalLabel}>Total today</span>
+              <span className={styles.orderTotalAmount}>₹{grandTotal}</span>
+            </div>
+
+            <ul className={styles.trustRow}>
+              <li className={styles.trustItem}>
+                <span className={styles.trustIcon} aria-hidden="true">
+                  <Icon name="lock" size={15} />
+                </span>
+                256-bit secure
+              </li>
+              <li className={styles.trustItem}>
+                <span className={styles.trustIcon} aria-hidden="true">
+                  <Icon name="check" size={15} />
+                </span>
+                Instant delivery
+              </li>
+              <li className={styles.trustItem}>
+                <span className={styles.trustIcon} aria-hidden="true">
+                  <Icon name="shield" size={15} />
+                </span>
+                Payment protected
+              </li>
+            </ul>
+
+            <p className={styles.oneTimeNote}>
+              One-time payment · No subscription · No hidden charges
+            </p>
           </div>
-        ) : null}
+        </aside>
+      </div>
 
-        <p className={styles.disclaimer}>
-          Secure payment by Cashfree · UPI, Cards, Net Banking, Wallets
-        </p>
-      </form>
-
-      {/* ============= STICKY BOTTOM CTA — always visible from page load ============= */}
+      {/* ============= STICKY BOTTOM CTA (mobile-first, always visible) ============= */}
       <div className={styles.stickyBar} role="region" aria-label="Checkout total">
         <div className={styles.stickyInner}>
           <div className={styles.stickyTotal}>
-            <span className={styles.stickyTotalLabel}>Total</span>
+            <span className={styles.stickyTotalLabel}>Total today</span>
             <span className={styles.stickyTotalValue}>₹{grandTotal}</span>
-            {bumpsTotal > 0 ? (
-              <span className={styles.stickyTotalNote}>
-                ₹{config.pricing.price} + ₹{bumpsTotal} add-on
-                {selectedBumps.size > 1 ? "s" : ""}
-              </span>
-            ) : (
-              <span className={styles.stickyTotalNote}>
-                Webinar registration
-              </span>
-            )}
+            <span className={styles.stickyTotalNote}>
+              {selectedItems.length} tool{selectedItems.length === 1 ? "" : "s"}
+            </span>
           </div>
 
           <button
             type="button"
             className={styles.stickyButton}
-            disabled={submitting || !sdkReady}
-            onClick={() => {
-              if (formRef.current) {
-                formRef.current.requestSubmit();
-              }
-            }}
+            disabled={submitting || !sdkReady || !hasItems}
+            onClick={() => formRef.current?.requestSubmit()}
           >
-            {submitting ? (
-              <span className={styles.spinner} aria-hidden="true" />
-            ) : null}
+            {submitting ? <span className={styles.spinner} aria-hidden="true" /> : null}
             <span>{submitting ? "Opening…" : `Pay ₹${grandTotal}`}</span>
-            <span className={styles.stickyArrow} aria-hidden="true">
-              →
-            </span>
+            <span className={styles.stickyArrow} aria-hidden="true">→</span>
           </button>
         </div>
       </div>

@@ -11,8 +11,7 @@ import styles from "./Hero.module.css";
 interface Props {
   hero: ClientConfig["hero"];
   event: ClientConfig["event"];
-  checkoutHref: string;
-  /** Reserved for backward compatibility — refund line now always rendered as a separate guarantee line. */
+  /** Reserved for backward compatibility — no longer rendered on the free funnel. */
   showRefundLine: boolean;
 }
 
@@ -22,7 +21,7 @@ interface InfoCard {
   value: string;
 }
 
-export function Hero({ hero, event, checkoutHref }: Props) {
+export function Hero({ hero, event }: Props) {
   // Built inside the component so it picks up env-driven date/time on every
   // render. (Previously this lived as a module-level const with the date
   // hardcoded — meaning Vercel env changes never reached the marquee.)
@@ -31,7 +30,7 @@ export function Hero({ hero, event, checkoutHref }: Props) {
     "For Indian Manufacturers, Traders & Sourcing Agents Doing Goods Export",
     "The Indian Export Insider Workshop",
     `Live · ${event.dateLabel} · ${event.timeLabel}`,
-    "Hindi · Zoom · 3 Hours · ₹99 entry",
+    "Hindi · Zoom · 3 Hours · Free entry",
   ];
 
   const infoCards: InfoCard[] = [
@@ -186,7 +185,7 @@ export function Hero({ hero, event, checkoutHref }: Props) {
 
             <div className={styles.ctaRow}>
               <CTAButton
-                href={checkoutHref}
+                opensRegister
                 variant="primary"
                 size="large"
                 withArrow

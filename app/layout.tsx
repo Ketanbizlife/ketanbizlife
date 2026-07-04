@@ -33,7 +33,7 @@ export const metadata: Metadata = {
     template: `%s · ${clientConfig.brand.name}`,
   },
   description:
-    "8 out of 10 Indian exporters fail. Not because of documents — because nobody taught them how to find real buyers. Live 3-hour Sunday webinar with Ketan: Raja Product framework + 2 buyer-finding systems for ₹99.",
+    "8 out of 10 Indian exporters fail. Not because of documents — because nobody taught them how to find real buyers. Free live 3-hour Sunday webinar with Ketan: 2 proven buyer-finding systems for Indian exporters.",
   keywords: [
     "export buyers",
     "indian exporters",
@@ -49,13 +49,13 @@ export const metadata: Metadata = {
     siteName: clientConfig.brand.name,
     title: `${clientConfig.brand.name} · Indian Export Insider Workshop`,
     description:
-      "Live 3-hour Sunday webinar. Raja Product framework + 2 proven buyer-finding systems for Indian exporters. ₹99 today only.",
+      "Free live 3-hour Sunday webinar. 2 proven buyer-finding systems for Indian exporters. Register free.",
   },
   twitter: {
     card: "summary_large_image",
     title: `${clientConfig.brand.name} · Indian Export Insider Workshop`,
     description:
-      "Live 3-hour Sunday webinar. Raja Product framework + 2 proven buyer-finding systems for Indian exporters.",
+      "Free live 3-hour Sunday webinar. 2 proven buyer-finding systems for Indian exporters.",
   },
   robots: {
     index: true,

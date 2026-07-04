@@ -210,46 +210,92 @@ export function reapplyMamFromCookie(): void {
 }
 
 /**
- * Fire the Meta Pixel standard 'Purchase' event from the browser, paired
- * with the server CAPI Purchase event of the same event_id for Meta's
- * dedup window (48h).
+ * Fire the Meta Pixel registration events from the browser, paired with the
+ * server CAPI events of the same event_id (= leadId) for Meta's dedup window
+ * (48h). Fires BOTH:
+ *   - the standard event (e.g. "CompleteRegistration") via fbq('track')
+ *   - the custom event (e.g. "FreeWebinarRegistration") via fbq('trackCustom')
  *
- * Per Meta dedup spec
- * (https://developers.facebook.com/documentation/ads-commerce/conversions-api/deduplicate-pixel-and-server-events):
- *   "Browser eventID must equal server event_id, and event_name must
- *   match exactly. Both events must arrive within a 48-hour window."
+ * Per Meta dedup spec, browser eventID must equal server event_id and the
+ * event_name must match exactly, within a 48-hour window.
  *
- * Call this AFTER awaiting setMetaAdvancedMatching so the Purchase event
- * inherits the hashed identity (em, ph, fn, ln, ct, country, external_id)
- * for 9+/10 EMQ on the browser side too.
+ * Call this AFTER awaiting setMetaAdvancedMatching so both events inherit the
+ * hashed identity (em, ph, fn, ln, ct, country, external_id) for 9.5+/10 EMQ
+ * on the browser side too.
  *
- * IMPORTANT: only call from the paid success path AND mirror the same
- * mode + amount gates as the server CAPI. If the server skips CAPI for
- * free/test orders, the browser MUST skip too — otherwise the browser
- * Purchase has no server pair to dedupe against and Meta counts it as
- * a real conversion, polluting the pixel.
+ * The webinar is free, so no monetary value is sent. fbq is only defined on
+ * the production brand domain (gated init in app/layout.tsx), so this is a
+ * no-op on localhost / preview URLs — mirroring the server CAPI host gate.
  */
-export function trackPurchasePixel(params: {
-  /** Used as eventID — MUST equal the server event_id (cf_payment_id). */
-  paymentId: string;
-  /** Numeric, major units (rupees). Same value as CAPI. */
-  value: number;
-  /** ISO 4217, e.g. 'INR'. */
-  currency?: string;
+export function trackRegistrationPixel(params: {
+  /** Used as eventID — MUST equal the server event_id (leadId). */
+  leadId: string;
+  /** Meta standard event token, e.g. "CompleteRegistration". */
+  standardEvent: string;
+  /** Internal custom event name, e.g. "FreeWebinarRegistration". */
+  customEvent: string;
   /** Display label in Events Manager. */
   contentName?: string;
 }): void {
   if (typeof window === "undefined") return;
   if (typeof window.fbq !== "function") return;
 
+  const contentName =
+    params.contentName ?? `${clientConfig.brand.name} Free Webinar`;
+
   window.fbq(
     "track",
-    "Purchase",
-    {
-      value: params.value,
-      currency: params.currency ?? clientConfig.brand.currency ?? "INR",
-      content_name: params.contentName ?? `${clientConfig.brand.name} Webinar`,
-    },
+    params.standardEvent,
+    { content_name: contentName },
+    { eventID: params.leadId },
+  );
+  window.fbq(
+    "trackCustom",
+    params.customEvent,
+    { content_name: contentName },
+    { eventID: params.leadId },
+  );
+}
+
+/**
+ * Fire the Meta Pixel PAID purchase events from the browser for the OTO
+ * checkout, paired with the server CAPI Purchase (same event_id =
+ * cf_payment_id) for Meta's 48h dedup window. Fires the standard "Purchase"
+ * via fbq('track') plus the custom event via fbq('trackCustom').
+ *
+ * Call AFTER awaiting setMetaAdvancedMatching and ONLY from the paid-success
+ * path, mirroring the server CAPI mode + amount gates. fbq is only defined on
+ * the production brand domain, so this no-ops on localhost / preview URLs.
+ */
+export function trackPurchasePixel(params: {
+  /** Used as eventID — MUST equal the server event_id (cf_payment_id). */
+  paymentId: string;
+  /** Numeric, major units (rupees). Same value as CAPI. */
+  value: number;
+  /** Meta standard event token, e.g. "Purchase". */
+  standardEvent: string;
+  /** Internal custom event name, e.g. "OTOPurchase". */
+  customEvent: string;
+  currency?: string;
+  contentName?: string;
+}): void {
+  if (typeof window === "undefined") return;
+  if (typeof window.fbq !== "function") return;
+
+  const currency = params.currency ?? clientConfig.brand.currency ?? "INR";
+  const contentName =
+    params.contentName ?? `${clientConfig.brand.name} Export Toolkit`;
+
+  window.fbq(
+    "track",
+    params.standardEvent,
+    { value: params.value, currency, content_name: contentName },
+    { eventID: params.paymentId },
+  );
+  window.fbq(
+    "trackCustom",
+    params.customEvent,
+    { value: params.value, currency, content_name: contentName },
     { eventID: params.paymentId },
   );
 }

@@ -5,10 +5,9 @@ import styles from "./IdentityBadgesGrid.module.css";
 
 interface Props {
   identity: ClientConfig["identityBadges"];
-  checkoutHref: string;
 }
 
-export function IdentityBadgesGrid({ identity, checkoutHref }: Props) {
+export function IdentityBadgesGrid({ identity }: Props) {
   return (
     <section className={`alt ${styles.section}`} aria-labelledby="identity-heading">
       <div className="container">
@@ -35,7 +34,7 @@ export function IdentityBadgesGrid({ identity, checkoutHref }: Props) {
           <p className={styles.outro}>{identity.outro}</p>
         </ScrollReveal>
 
-        <SectionCTA text={identity.ctaText} href={checkoutHref} />
+        <SectionCTA text={identity.ctaText} />
       </div>
     </section>
   );

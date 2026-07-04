@@ -82,7 +82,7 @@ export default function ThankYouPage() {
     {
       icon: "message" as const,
       title: "Check WhatsApp",
-      body: "Confirmation arrives at the number you used at checkout. The Zoom link reaches you 30 minutes before the session.",
+      body: "Confirmation arrives at the number you used to register. The Zoom link reaches you 30 minutes before the session.",
     },
     {
       icon: "lightbulb" as const,

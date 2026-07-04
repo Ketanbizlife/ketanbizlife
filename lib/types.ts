@@ -25,13 +25,49 @@ export interface UtmPayload {
   fbclid?: string;
 }
 
+/**
+ * Free registration submit. There is no payment — the lead form itself is the
+ * conversion. `leadId` is a UUID minted on the browser so the browser pixel
+ * event and the server CAPI event share an event_id (Meta dedup pair).
+ */
+export interface RegisterRequest {
+  /** UUID minted client-side; used as CAPI event_id + Pabbly lead_id. */
+  leadId: string;
+  customer: CustomerPayload;
+  utm: UtmPayload;
+  /** Facebook click-id cookie (forwarded for the server CAPI fire) */
+  fbc?: string;
+  /** Facebook browser-id cookie (forwarded for the server CAPI fire) */
+  fbp?: string;
+  /** Raw fbclid from the landing URL (persisted via UTM). The register route
+   *  reconstructs `_fbc` from it when the pixel didn't set the cookie — the
+   *  common case for Instagram/Facebook in-app browsers. */
+  fbclid?: string;
+  /** navigator.userAgent at submit time (forwarded for the server CAPI fire) */
+  userAgent?: string;
+  /** window.location.href at submit time (Meta CAPI event_source_url) */
+  eventSourceUrl?: string;
+}
+
+export interface RegisterResponse {
+  success: boolean;
+  leadId?: string;
+  message?: string;
+}
+
+// ---------------------------------------------------------------------------
+// OTO (one-time-offer) paid checkout — Cashfree. The main webinar is free;
+// these types power ONLY the standalone /free/oto → /free/checkout upsell,
+// where the selected add-on "bumps" are paid. Base price is 0 (add-ons only).
+// ---------------------------------------------------------------------------
+
 export type CashfreeMode = "sandbox" | "production";
 
 export interface CreateOrderRequest {
   amount: number;
   currency: string;
   customer: CustomerPayload;
-  /** IDs of selected checkout bumps (server resolves to titles/prices) */
+  /** IDs of selected OTO bumps (server resolves to titles/prices) */
   selectedBumpIds: string[];
   utm: UtmPayload;
   /** Facebook click-id cookie (snapshotted into order_tags for the webhook-side CAPI fire) */
@@ -60,14 +96,11 @@ export interface VerifyPaymentRequest {
   orderId: string;
   customer: CustomerPayload;
   utm: UtmPayload;
-  /** IDs of selected checkout bumps (server resolves to titles/prices) */
+  /** IDs of selected OTO bumps (server resolves to titles/prices) */
   selectedBumpIds: string[];
   grandTotal: number;
-  /** Optional Facebook click-id and browser-id cookies (forwarded for CAPI) */
   fbc?: string;
   fbp?: string;
-  /** window.location.href at the time of submit. Required by Meta CAPI as
-   *  event_source_url for matching + restricted-category compliance. */
   eventSourceUrl?: string;
 }
 

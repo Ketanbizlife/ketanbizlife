@@ -7,7 +7,7 @@ export interface PabblyBumpItem {
   price: number;
 }
 
-/** Max number of flat bump_N_* slots emitted in the payload. */
+/** Max number of flat bump_N_* slots emitted in the OTO purchase payload. */
 const MAX_BUMP_SLOTS = 4;
 
 /**
@@ -24,55 +24,190 @@ function deriveFbclidFromFbc(fbc: string): string {
 }
 
 /**
- * Fire-and-forget POST to the Pabbly Connect webhook. Failures are logged but
- * never surfaced to the user — payment verification is the only thing that
- * gates the thank-you redirect.
+ * Fire-and-forget POST to the Pabbly Connect webhook for a FREE registration.
+ * Failures are logged but never surfaced to the user — the /thank-you redirect
+ * is not gated on this.
+ *
+ * The webinar is free, so there is no payment: the lead-form submission itself
+ * is the conversion. `leadId` is a UUID minted on the browser (also used as the
+ * Meta CAPI event_id) so every downstream system keys off the same unique id.
  */
 export async function firePabblyWebhook(args: {
   customer: CustomerPayload;
   utm: UtmPayload;
-  paymentId: string;
-  orderId: string;
-  /** Grand total paid (base + bumps), in major units (e.g. 598 for ₹598) */
-  amount: number;
-  basePrice: number;
-  bumpsTotal: number;
-  /** Human-readable list of selected bumps, e.g. "Title A (₹199); Title B (₹199)" or "none" */
-  bumps: string;
-  /** Structured selected bumps. Empty array when none selected. */
-  bumpItems: PabblyBumpItem[];
+  /** Unique per-submission id (UUID). Also the Meta CAPI event_id. */
+  leadId: string;
   currency: string;
   timezone: string;
-  /** Which server path fired this row. Currently always the Cashfree webhook. */
-  source: "webhook";
-  /** True iff a CAPI fire was attempted for this order (false when gated off). */
+  /** Which server path fired this row. Currently always /api/register. */
+  source: "register";
+  /** Meta standard event fired for this lead (e.g. "CompleteRegistration"). */
+  standardEvent: string;
+  /** Meta custom event fired for this lead (e.g. "FreeWebinarRegistration"). */
+  customEvent: string;
+  /** True iff a CAPI fire was attempted for this lead (false when gated off). */
   capiAttempted: boolean;
-  /** Result code from fireMetaCapiPurchase. "skipped" when gated, "err"/"timeout" on failure. */
+  /** Result code from fireMetaCapiRegistration. "skipped" when gated. */
   capiOutcome: "ok" | "err" | "timeout" | "skipped";
-  /** Human-readable reason CAPI didn't reach Meta. Empty string when outcome === "ok". */
+  /** Human-readable reason CAPI didn't reach Meta. Empty when outcome === "ok". */
   capiSkipReason: string;
-  /** ISO timestamp of when Cashfree's webhook hit this server (for latency debugging). */
-  cashfreeEventReceivedAt: string;
-  // ---- CAPI downstream-feedback enrichment (SOP fields 9-14, 16-17, 23) ----
-  /** Raw `_fbc` cookie value snapshotted at create-order, or "" when absent. */
+  // ---- CAPI downstream-feedback enrichment ----
+  /** Raw `_fbc` cookie value, or "" when absent. */
   fbc: string;
-  /** Raw `_fbp` cookie value snapshotted at create-order, or "" when absent. */
+  /** Raw `_fbp` cookie value, or "" when absent. */
   fbp: string;
-  /** Client IP captured from x-forwarded-for at create-order time. */
+  /** Client IP captured from x-forwarded-for. */
   clientIpAddress: string;
-  /** Client User-Agent captured at create-order time (truncated upstream). */
+  /** Client User-Agent captured at submit time. */
   clientUserAgent: string;
-  /** Canonical conversion page URL (the checkout page on the brand domain). */
+  /** Canonical conversion page URL. */
   eventSourceUrl: string;
-  /** True for sandbox or sub-₹1 test charges; drives the is_test column. */
+  /** True for non-production hosts (localhost / preview); drives is_test. */
   isTest: boolean;
 }): Promise<void> {
   const url = process.env.PABBLY_WEBHOOK_URL;
   console.log(
-    `[pabbly] fire start orderId=${args.orderId} amount=${args.amount} bumpItems=${args.bumpItems.length} hasUrl=${Boolean(url)}`,
+    `[pabbly] fire start leadId=${args.leadId} email=${args.customer.email} hasUrl=${Boolean(url)}`,
   );
   if (!url) {
     console.warn("[pabbly] PABBLY_WEBHOOK_URL not set — skipping webhook fire");
+    return;
+  }
+
+  const now = new Date();
+  const dateFormatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: args.timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const timeFormatter = new Intl.DateTimeFormat("en-GB", {
+    timeZone: args.timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+
+  const fullName = [args.customer.firstName, args.customer.lastName]
+    .filter(Boolean)
+    .join(" ");
+
+  const payload = {
+    first_name: args.customer.firstName,
+    last_name: args.customer.lastName,
+    full_name: fullName,
+    email: args.customer.email,
+    phone: args.customer.phone,
+    city: args.customer.city,
+    country_code: args.customer.countryCode,
+    // Unique per-submission id. Replaces the old payment_id. Emitted under
+    // multiple aliases so downstream automations can key off whichever they
+    // already reference.
+    lead_id: args.leadId,
+    registration_event_id: args.leadId,
+    currency: args.currency,
+    amount: "0",
+    registration_date: dateFormatter.format(now),
+    registration_time: timeFormatter.format(now),
+    registration_timestamp: now.toISOString(),
+    created_at: now.toISOString(),
+    utm_source: args.utm.utm_source ?? "",
+    utm_medium: args.utm.utm_medium ?? "",
+    utm_campaign: args.utm.utm_campaign ?? "",
+    utm_content: args.utm.utm_content ?? "",
+    utm_term: args.utm.utm_term ?? "",
+    // ---- CAPI downstream-feedback enrichment ----
+    // Identity fields (fbc/fbp/ip/ua/external_id) give downstream CRM-fired
+    // events high EMQ. external_id uses the same sha256(lowercase(email)) as
+    // the server CAPI so the events match. fbclid is parsed out of _fbc.
+    fbc: args.fbc,
+    fbp: args.fbp,
+    fbclid: deriveFbclidFromFbc(args.fbc),
+    client_ip_address: args.clientIpAddress,
+    client_user_agent: args.clientUserAgent,
+    external_id: args.customer.email ? sha256Lower(args.customer.email) : "",
+    event_source_url: args.eventSourceUrl,
+    is_test: args.isTest ? "true" : "false",
+    // Meta event names fired for this lead.
+    standard_event: args.standardEvent,
+    custom_event: args.customEvent,
+    // ---- Diagnostic columns ----
+    source: args.source,
+    capi_attempted: args.capiAttempted ? "true" : "false",
+    capi_outcome: args.capiOutcome,
+    capi_skip_reason: args.capiSkipReason,
+  };
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "<no body>");
+      console.warn(
+        `[pabbly] webhook returned ${res.status} for lead ${args.leadId}: ${text}`,
+      );
+    } else {
+      console.log(
+        `[pabbly] webhook OK ${res.status} for lead ${args.leadId}`,
+      );
+    }
+  } catch (err) {
+    console.warn(
+      `[pabbly] webhook failed for lead ${args.leadId}:`,
+      err instanceof Error ? err.message : err,
+    );
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Fire-and-forget POST to Pabbly for a PAID OTO purchase. Separate from the
+ * free-registration payload above: this one carries payment_id / order_id /
+ * amount / selected-bump breakdown. `source: "oto"` lets the sheet tell OTO
+ * purchases apart from free registrations.
+ */
+export async function firePabblyPurchase(args: {
+  customer: CustomerPayload;
+  utm: UtmPayload;
+  paymentId: string;
+  orderId: string;
+  /** Grand total paid (bumps only — the OTO has no base), major units. */
+  amount: number;
+  bumpsTotal: number;
+  /** Human-readable list of selected bumps, e.g. "Title A (₹199); Title B (₹199)". */
+  bumps: string;
+  bumpItems: PabblyBumpItem[];
+  currency: string;
+  timezone: string;
+  source: "oto";
+  capiAttempted: boolean;
+  capiOutcome: "ok" | "err" | "timeout" | "skipped";
+  capiSkipReason: string;
+  fbc: string;
+  fbp: string;
+  clientIpAddress: string;
+  clientUserAgent: string;
+  eventSourceUrl: string;
+  isTest: boolean;
+}): Promise<void> {
+  // Separate webhook from the free-registration one — the addons/OTO purchase
+  // has its own Pabbly workflow (PABBLY_OTO_WEBHOOK_URL).
+  const url = process.env.PABBLY_OTO_WEBHOOK_URL;
+  console.log(
+    `[pabbly] oto purchase fire start orderId=${args.orderId} amount=${args.amount} bumpItems=${args.bumpItems.length} hasUrl=${Boolean(url)}`,
+  );
+  if (!url) {
+    console.warn(
+      "[pabbly] PABBLY_OTO_WEBHOOK_URL not set — skipping OTO webhook fire",
+    );
     return;
   }
 
@@ -119,8 +254,9 @@ export async function firePabblyWebhook(args: {
     country_code: args.customer.countryCode,
     payment_id: args.paymentId,
     order_id: args.orderId,
+    lead_id: args.paymentId,
     amount: String(args.amount),
-    base_price: String(args.basePrice),
+    base_price: "0",
     bumps_total: String(args.bumpsTotal),
     bumps: args.bumps,
     bumps_count: String(args.bumpItems.length),
@@ -133,38 +269,25 @@ export async function firePabblyWebhook(args: {
     payment_date: dateFormatter.format(now),
     payment_time: timeFormatter.format(now),
     payment_timestamp: now.toISOString(),
+    created_at: now.toISOString(),
     utm_source: args.utm.utm_source ?? "",
     utm_medium: args.utm.utm_medium ?? "",
     utm_campaign: args.utm.utm_campaign ?? "",
     utm_content: args.utm.utm_content ?? "",
     utm_term: args.utm.utm_term ?? "",
-    // ---- CAPI downstream-feedback enrichment ----
-    // These feed the CRM sheet (cols A–W) that the Apps Script reads to fire
-    // LeadShowUp / QualifiedLead / HighTicketPurchase. lead_id + created_at +
-    // purchase_event_id are aliases of values already in this payload; the
-    // identity fields (fbc/fbp/ip/ua/external_id) are what give the downstream
-    // events 9+ EMQ. external_id uses the same sha256(lowercase(email)) as the
-    // server CAPI so the events match. fbclid is parsed out of the _fbc cookie.
-    lead_id: args.paymentId,
-    created_at: now.toISOString(),
     fbc: args.fbc,
     fbp: args.fbp,
+    fbclid: deriveFbclidFromFbc(args.fbc),
     client_ip_address: args.clientIpAddress,
     client_user_agent: args.clientUserAgent,
     external_id: args.customer.email ? sha256Lower(args.customer.email) : "",
     event_source_url: args.eventSourceUrl,
     is_test: args.isTest ? "true" : "false",
     purchase_event_id: args.paymentId,
-    fbclid: deriveFbclidFromFbc(args.fbc),
-    // ---- Diagnostic columns (Google Sheet) ----
-    // `source` lets us prove every row came through the webhook now that
-    // verify-payment no longer fires Pabbly. The capi_* trio explains
-    // why Meta did/didn't see a given conversion at row-level granularity.
     source: args.source,
     capi_attempted: args.capiAttempted ? "true" : "false",
     capi_outcome: args.capiOutcome,
     capi_skip_reason: args.capiSkipReason,
-    cashfree_event_received_at: args.cashfreeEventReceivedAt,
   };
 
   const controller = new AbortController();
@@ -179,16 +302,16 @@ export async function firePabblyWebhook(args: {
     if (!res.ok) {
       const text = await res.text().catch(() => "<no body>");
       console.warn(
-        `[pabbly] webhook returned ${res.status} for order ${args.orderId}: ${text}`,
+        `[pabbly] oto webhook returned ${res.status} for order ${args.orderId}: ${text}`,
       );
     } else {
       console.log(
-        `[pabbly] webhook OK ${res.status} for order ${args.orderId}`,
+        `[pabbly] oto webhook OK ${res.status} for order ${args.orderId}`,
       );
     }
   } catch (err) {
     console.warn(
-      `[pabbly] webhook failed for order ${args.orderId}:`,
+      `[pabbly] oto webhook failed for order ${args.orderId}:`,
       err instanceof Error ? err.message : err,
     );
   } finally {

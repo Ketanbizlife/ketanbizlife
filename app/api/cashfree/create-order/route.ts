@@ -19,14 +19,17 @@ export const dynamic = "force-dynamic";
 
 const SUPPORTED_CURRENCIES = new Set(["INR"]);
 
-function computeServerGrandTotal(selectedBumpIds: string[]): number {
-  const base = clientConfig.pricing.price;
+/**
+ * OTO total = sum of selected add-on bumps ONLY. The webinar itself is free,
+ * so there is no base price to add.
+ */
+function computeOtoTotal(selectedBumpIds: string[]): number {
   let bumps = 0;
   for (const id of selectedBumpIds) {
     const bump = clientConfig.checkout.bumps.find((b) => b.id === id);
     if (bump) bumps += bump.price;
   }
-  return base + bumps;
+  return bumps;
 }
 
 export async function POST(
@@ -53,9 +56,6 @@ export async function POST(
     fbclid,
     userAgent,
   } = body;
-  // `eventSourceUrl` is intentionally not destructured: we no longer
-  // store it in order_tags (see comment below for why). The browser
-  // still sends the field, it just goes unread server-side.
 
   if (!Number.isFinite(amount) || amount <= 0) {
     return NextResponse.json(
@@ -71,55 +71,45 @@ export async function POST(
     );
   }
 
-  if (
-    !customer ||
-    !customer.email ||
-    !customer.phone ||
-    !customer.firstName
-  ) {
+  if (!customer || !customer.email || !customer.phone || !customer.firstName) {
     return NextResponse.json(
       { success: false, error: "Missing customer details" },
       { status: 400 },
     );
   }
 
-  // Defense in depth: recompute total from config + selected bump IDs and
-  // refuse if the client tried to pass an amount different from the truth.
+  // Defense in depth: recompute total from config + selected bump IDs.
   const safeBumpIds = Array.isArray(selectedBumpIds) ? selectedBumpIds : [];
-  const expected = computeServerGrandTotal(safeBumpIds);
+  const expected = computeOtoTotal(safeBumpIds);
+  if (expected <= 0) {
+    return NextResponse.json(
+      { success: false, error: "No add-ons selected", code: "NO_BUMPS" },
+      { status: 400 },
+    );
+  }
   if (amount !== expected) {
     return NextResponse.json(
       {
         success: false,
-        error: "Amount mismatch with selected bumps",
+        error: "Amount mismatch with selected add-ons",
         code: "AMOUNT_MISMATCH",
       },
       { status: 400 },
     );
   }
 
-  const customerId = sha256Lower(
-    `${customer.email}|${customer.phone}`,
-  ).slice(0, 32);
+  const customerId = sha256Lower(`${customer.email}|${customer.phone}`).slice(
+    0,
+    32,
+  );
   const customerName =
     `${customer.firstName} ${customer.lastName}`.trim() || customer.firstName;
 
   const utmSafe = utm ?? {};
-  // Snapshot the browser context so the Cashfree webhook can rebuild the
-  // CAPI payload later. The webhook is hit by Cashfree's servers (no
-  // browser headers), so without this snapshot CAPI would fire with blank
-  // IP/UA and tank EMQ.
-  //
-  // Cashfree caps each order_tag value at 256 base64 chars and the whole
-  // map at 10 keys. UA strings alone (140+ chars) already push the packed
-  // JSON over the limit, so we split:
-  //   - `ua`  : raw UA truncated to 180 chars, encoded ≤ 240
-  //   - `ctx` : JSON of {fbc, fbp, ip} only
-  // eventSourceUrl is dropped entirely; the webhook falls back to the
-  // canonical /checkout URL on the brand domain (Meta is permissive about
-  // event_source_url so long as it matches the configured pixel domain).
-  // countryCode (`cc`) is dropped too — it's always "IN" here and the
-  // webhook already defaults to "IN" when the tag is missing.
+  // Snapshot browser context so the Cashfree webhook can rebuild the CAPI
+  // payload later (the webhook is hit by Cashfree's servers, no browser
+  // headers). Cashfree caps each order_tag value at 256 base64 chars and the
+  // map at 10 keys, so UA gets its own tag and the small fields are packed.
   const clientIp = extractClientIp(request);
   const ua = (userAgent ?? "").slice(0, 180);
   // fbc recovery for Meta in-app browsers. When the user clicks a Meta ad
@@ -133,14 +123,12 @@ export async function POST(
   // pixel-written one. Without this, we lose attribution for ~all paid
   // mobile-ad traffic.
   const resolvedFbc =
-    (fbc && fbc.length > 0)
+    fbc && fbc.length > 0
       ? fbc
-      : (fbclid && fbclid.length > 0)
+      : fbclid && fbclid.length > 0
         ? `fb.1.${Date.now()}.${fbclid}`
         : "";
   const ctx = packBrowserContext({ fbc: resolvedFbc, fbp, ip: clientIp });
-  // 9 tags total. One slot of headroom inside Cashfree's 10-key limit.
-  // Adding any new tag requires dropping another or Cashfree returns 400.
   const orderTags: CashfreeOrderTags = {
     fn: customer.firstName,
     ln: customer.lastName,

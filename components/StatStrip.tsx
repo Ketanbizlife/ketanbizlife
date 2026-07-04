@@ -78,8 +78,8 @@ function CountUpValue({ value, active, indexDelay }: CountUpProps) {
     const m = value.match(/^(\d+)([\s\S]*)$/);
     return {
       hasNumber: !!m,
-      target: m ? parseInt(m[1], 10) : 0,
-      suffix: m ? m[2] : "",
+      target: m ? parseInt(m[1] ?? "0", 10) : 0,
+      suffix: m ? m[2] ?? "" : "",
     };
   }, [value]);
 

@@ -25,17 +25,15 @@ export default function PrivacyPage() {
       body: (
         <>
           <p>
-            When you register for a webinar, we collect: first name, last name,
-            email, phone number with country code, city, and standard UTM
-            tracking parameters from your visit. After a successful transaction
-            we also store the payment ID, order ID, and amount returned by our
-            payment processor.
+            When you register for our free webinar, we collect: first name, last
+            name, email, phone number with country code, city, and standard UTM
+            tracking parameters from your visit. Each registration is assigned a
+            unique lead ID for our records.
           </p>
           <p>
-            <strong>We do not collect or store card details.</strong> Cashfree
-            handles all payment information directly per PCI DSS standards. The
-            checkout modal is served from cashfree.com — your card never
-            touches our servers.
+            <strong>The webinar is free — we never ask for payment.</strong> We
+            do not collect, process, or store any card, bank, or payment
+            information at any point.
           </p>
         </>
       ),
@@ -75,7 +73,6 @@ export default function PrivacyPage() {
             performance:
           </p>
           <ul>
-            <li>Cashfree — payment processing and refund handling.</li>
             <li>
               Pabbly Connect — automation routing to our CRM and WhatsApp
               delivery.
@@ -94,10 +91,9 @@ export default function PrivacyPage() {
       title: "Security",
       body: (
         <p>
-          We use HTTPS in transit, signed webhooks for payment confirmations,
-          and access-controlled storage for customer records. Payment data is
-          handled exclusively by PCI-compliant gateways; we never see card
-          numbers, CVVs, or expiry data.
+          We use HTTPS in transit and access-controlled storage for customer
+          records. Because the webinar is free, we never request or handle any
+          payment, card, or bank information.
         </p>
       ),
     },

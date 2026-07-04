@@ -1,13 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Icon } from "./Icon";
 import styles from "./FloatingCountdown.module.css";
 
 interface Props {
   targetISO: string;
-  ctaHref: string;
   ctaLabel?: string;
 }
 
@@ -44,8 +42,7 @@ function pad(n: number): string {
  */
 export function FloatingCountdown({
   targetISO,
-  ctaHref,
-  ctaLabel = "Book Seat",
+  ctaLabel = "Register Free",
 }: Props) {
   const [mounted, setMounted] = useState(false);
   const [time, setTime] = useState<TimeLeft>(() => computeTimeLeft(targetISO));
@@ -59,35 +56,49 @@ export function FloatingCountdown({
     return () => clearInterval(interval);
   }, [targetISO]);
 
-  if (!mounted || time.expired) return null;
+  // Render nothing until mounted (avoids an SSR/client countdown mismatch).
+  // IMPORTANT: we do NOT hide the bar when the countdown expires — the CTA is a
+  // primary conversion element and must stay visible. When expired we just swap
+  // the timer for an urgency label.
+  if (!mounted) return null;
 
   return (
     <div
       className={styles.bar}
       role="region"
-      aria-label="Webinar countdown"
+      aria-label="Webinar registration"
     >
       <div className={styles.inner}>
-        <div className={styles.label}>
-          <Icon name="clock" size={14} />
-          <span>Webinar in</span>
-        </div>
+        {time.expired ? (
+          <div className={styles.label}>
+            <Icon name="clock" size={14} />
+            <span>Seats filling fast</span>
+          </div>
+        ) : (
+          <>
+            <div className={styles.label}>
+              <Icon name="clock" size={14} />
+              <span>Webinar in</span>
+            </div>
 
-        <div className={styles.cells}>
-          <Cell value={pad(time.days)} unit="d" />
-          <Cell value={pad(time.hours)} unit="h" />
-          <Cell value={pad(time.minutes)} unit="m" />
-          <Cell value={pad(time.seconds)} unit="s" />
-        </div>
+            <div className={styles.cells}>
+              <Cell value={pad(time.days)} unit="d" />
+              <Cell value={pad(time.hours)} unit="h" />
+              <Cell value={pad(time.minutes)} unit="m" />
+              <Cell value={pad(time.seconds)} unit="s" />
+            </div>
+          </>
+        )}
 
-        <Link
-          href={ctaHref}
+        <button
+          type="button"
+          data-register-cta
           className={styles.cta}
-          aria-label={`${ctaLabel} for ₹99 webinar`}
+          aria-label={`${ctaLabel} for the free webinar`}
         >
           <span>{ctaLabel}</span>
           <Icon name="arrow-right" size={14} />
-        </Link>
+        </button>
       </div>
     </div>
   );

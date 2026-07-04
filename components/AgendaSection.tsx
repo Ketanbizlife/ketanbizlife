@@ -5,10 +5,9 @@ import styles from "./AgendaSection.module.css";
 
 interface Props {
   agenda: ClientConfig["agenda"];
-  checkoutHref: string;
 }
 
-export function AgendaSection({ agenda, checkoutHref }: Props) {
+export function AgendaSection({ agenda }: Props) {
   return (
     <section className={`alt ${styles.section}`} aria-labelledby="agenda-heading">
       <div className="container">
@@ -46,7 +45,7 @@ export function AgendaSection({ agenda, checkoutHref }: Props) {
           ))}
         </ol>
 
-        <SectionCTA text={agenda.ctaText} href={checkoutHref} />
+        <SectionCTA text={agenda.ctaText} />
       </div>
     </section>
   );

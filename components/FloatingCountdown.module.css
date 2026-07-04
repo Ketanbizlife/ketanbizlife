@@ -104,6 +104,8 @@
   font-weight: var(--weight-semibold);
   letter-spacing: 0.02em;
   border-radius: var(--radius-md);
+  border: none;
+  cursor: pointer;
   text-decoration: none;
   box-shadow: 0 0 16px rgba(47, 107, 255, 0.4);
   white-space: nowrap;

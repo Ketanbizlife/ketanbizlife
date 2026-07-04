@@ -8,10 +8,9 @@ const segmentIcons: IconName[] = ["factory", "container"];
 
 interface Props {
   who: ClientConfig["who"];
-  checkoutHref: string;
 }
 
-export function WhoSection({ who, checkoutHref }: Props) {
+export function WhoSection({ who }: Props) {
   return (
     <section className={`light ${styles.section}`} aria-labelledby="who-heading">
       <div className="container">
@@ -56,7 +55,7 @@ export function WhoSection({ who, checkoutHref }: Props) {
           <p className={styles.closingLine}>{who.closingLine}</p>
         </ScrollReveal>
 
-        <SectionCTA text={who.ctaText} href={checkoutHref} />
+        <SectionCTA text={who.ctaText} />
       </div>
     </section>
   );

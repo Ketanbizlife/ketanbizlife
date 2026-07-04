@@ -6,10 +6,9 @@ import styles from "./FinalCtaSection.module.css";
 
 interface Props {
   finalCta: ClientConfig["finalCta"];
-  checkoutHref: string;
 }
 
-export function FinalCtaSection({ finalCta, checkoutHref }: Props) {
+export function FinalCtaSection({ finalCta }: Props) {
   return (
     <section
       className={`alt ${styles.section}`}
@@ -56,7 +55,7 @@ export function FinalCtaSection({ finalCta, checkoutHref }: Props) {
         <ScrollReveal delay={0.3}>
           <div className={styles.ctaWrap}>
             <CTAButton
-              href={checkoutHref}
+              opensRegister
               variant="primary"
               size="large"
               withArrow

@@ -1,10 +1,8 @@
 /**
  * Tiny shared HTTP helpers for route handlers.
  *
- * Lives at lib/ because both /api/cashfree/create-order (to snapshot the
- * client IP into order_tags) and /api/cashfree/webhook (for diagnostic
- * logging) need the same logic. Keeping it here avoids drift between two
- * copy-pasted helpers.
+ * Used by /api/register to capture the originating client IP for the Meta
+ * CAPI user_data (client_ip_address) and the Pabbly enrichment payload.
  */
 
 /**

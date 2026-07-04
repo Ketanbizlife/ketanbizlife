@@ -11,6 +11,13 @@ interface BaseProps {
   size?: Size;
   withArrow?: boolean;
   ariaLabel?: string;
+  /**
+   * When true, renders a plain button carrying `data-register-cta`. The
+   * RegisterModal (mounted once per page) catches clicks via event delegation
+   * and opens the free-registration modal — no href, no onClick needed, so
+   * this stays usable from server components.
+   */
+  opensRegister?: boolean;
 }
 
 interface ButtonProps extends BaseProps {
@@ -34,6 +41,7 @@ export function CTAButton(props: Props) {
     size = "default",
     withArrow = true,
     ariaLabel,
+    opensRegister,
   } = props;
 
   const className = [
@@ -52,6 +60,19 @@ export function CTAButton(props: Props) {
       ) : null}
     </>
   );
+
+  if (opensRegister) {
+    return (
+      <button
+        className={className}
+        type="button"
+        data-register-cta
+        aria-label={ariaLabel}
+      >
+        {inner}
+      </button>
+    );
+  }
 
   if ("href" in props && props.href !== undefined) {
     return (

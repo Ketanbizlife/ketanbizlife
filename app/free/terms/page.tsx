@@ -25,10 +25,10 @@ export default function TermsPage() {
       title: "1. Registration",
       body: (
         <p>
-          By completing payment, you reserve a single seat for the live webinar
-          you registered for. Seats are non-transferable. The Zoom link is sent
-          to the WhatsApp number you provided 30 minutes before the webinar
-          start time.
+          Registration for the webinar is free. By registering, you reserve a
+          single seat for the live webinar you signed up for. Seats are
+          non-transferable. The Zoom link is sent to the WhatsApp number you
+          provided 30 minutes before the webinar start time.
         </p>
       ),
     },
@@ -45,24 +45,14 @@ export default function TermsPage() {
     },
     {
       id: "refund",
-      icon: "refresh",
-      title: "3. Refund policy",
+      icon: "rupee",
+      title: "3. Free registration — no charges",
       body: (
-        <>
-          <p>
-            <strong>100% Money-Back Guarantee.</strong> Attend the live webinar,
-            watch the full session. If, by Sunday evening, you feel the content
-            did not deliver value, message us on WhatsApp at the support number
-            shared in your welcome message and we will refund the ₹99 paid in
-            full within 7&ndash;10 business days.
-          </p>
-          <p>
-            No paperwork, no questions asked. This guarantee applies to the
-            base ₹99 registration only — any optional add-on toolkits are
-            final once purchased. For the full policy, see the{" "}
-            <Link href="/refund">Refund Policy</Link>.
-          </p>
-        </>
+        <p>
+          This webinar is <strong>100% free</strong>. There is no registration
+          fee, no credit card required, and no charge at any point. As nothing
+          is paid, there are no payments to refund.
+        </p>
       ),
     },
     {
@@ -97,8 +87,9 @@ export default function TermsPage() {
       body: (
         <p>
           Our handling of your personal data is covered in the{" "}
-          <Link href="/privacy">Privacy Policy</Link>. Payments are processed
-          by Cashfree under PCI DSS standards; we do not store card data.
+          <Link href="/free/privacy">Privacy Policy</Link>. We collect only the
+          registration details you provide and never ask for any payment or
+          card information.
         </p>
       ),
     },
@@ -163,8 +154,8 @@ export default function TermsPage() {
               These terms govern your registration and participation in
               webinars and workshops offered by{" "}
               <strong>{clientConfig.brand.name}</strong> (&ldquo;we&rdquo;,
-              &ldquo;our&rdquo;). By completing checkout you confirm that you
-              have read and agree to these terms.
+              &ldquo;our&rdquo;). By registering you confirm that you have read
+              and agree to these terms.
             </p>
           </div>
 

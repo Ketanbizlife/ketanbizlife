@@ -5,7 +5,7 @@ import {
   unpackBrowserContext,
   verifyCashfreeWebhookSignature,
 } from "@/lib/cashfree";
-import { firePabblyWebhook, type PabblyBumpItem } from "@/lib/pabbly";
+import { firePabblyPurchase, type PabblyBumpItem } from "@/lib/pabbly";
 import { fireMetaCapiPurchase } from "@/lib/capi";
 import { tryClaimOrder } from "@/lib/dedup";
 import { clientConfig } from "@/client.config";
@@ -37,10 +37,7 @@ interface CashfreeWebhookPayload {
   };
 }
 
-/**
- * Order tags were base64url-encoded when the order was created (see
- * lib/cashfree.ts sanitizeTags). Decode each value here before use.
- */
+/** order_tags were base64url-encoded at create-order (lib/cashfree sanitizeTags). */
 function decodeTags(
   tags: Record<string, string> | null | undefined,
 ): Record<string, string> {
@@ -64,9 +61,7 @@ function rebuildCustomerFromTags(
   const phone = tags.ph || fallback?.phone || "";
   if (!email || !phone) return null;
 
-  const [fallbackFirst = "", ...fallbackRest] = (fallback?.name ?? "").split(
-    " ",
-  );
+  const [fallbackFirst = "", ...fallbackRest] = (fallback?.name ?? "").split(" ");
   return {
     firstName: tags.fn || fallbackFirst,
     lastName: tags.ln || fallbackRest.join(" "),
@@ -77,9 +72,7 @@ function rebuildCustomerFromTags(
   };
 }
 
-function rebuildUtmFromTags(
-  tags: Record<string, string>,
-): UtmPayload {
+function rebuildUtmFromTags(tags: Record<string, string>): UtmPayload {
   if (!tags.utm) return {};
   try {
     const parsed = JSON.parse(tags.utm) as UtmPayload;
@@ -105,25 +98,16 @@ function resolveBumps(idsCsv: string | undefined): {
         ? matched.map((b) => `${b.title} (₹${b.price})`).join("; ")
         : "none",
     bumpsTotal: matched.reduce((sum, b) => sum + b.price, 0),
-    bumpItems: matched.map((b) => ({
-      id: b.id,
-      title: b.title,
-      price: b.price,
-    })),
+    bumpItems: matched.map((b) => ({ id: b.id, title: b.title, price: b.price })),
   };
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
-  // Cashfree signs the raw body — read it as text ONCE and don't reparse.
   const rawBody = await request.text();
   const timestamp = request.headers.get("x-webhook-timestamp") ?? "";
   const signature = request.headers.get("x-webhook-signature") ?? "";
 
-  const valid = verifyCashfreeWebhookSignature({
-    rawBody,
-    timestamp,
-    signature,
-  });
+  const valid = verifyCashfreeWebhookSignature({ rawBody, timestamp, signature });
   if (!valid) {
     console.warn("[cashfree-webhook] signature mismatch");
     return NextResponse.json(
@@ -142,8 +126,6 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  // Only act on a successful payment event. For any other event (FAILED,
-  // USER_DROPPED, etc) we just acknowledge so Cashfree doesn't retry.
   const eventType = parsed.type ?? "";
   const paymentStatus = parsed.data?.payment?.payment_status ?? "";
   const isSuccess =
@@ -157,28 +139,14 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ received: true, acted: false });
   }
 
-  // Dedup: Cashfree can occasionally double-deliver the same webhook event
-  // (retries on transient 5xx, network blips). Guard Pabbly so we don't
-  // append a duplicate row. CAPI is intentionally not gated here because
-  // Meta dedupes server-side on event_id (= cf_payment_id) within a 48h
-  // window — and a same-Lambda double-claim is rare enough that we'd
-  // rather pay the duplicate request cost than risk a missed fire.
+  // Dedup Pabbly against Cashfree double-delivery. CAPI dedupes server-side on
+  // event_id (= cf_payment_id) so it's intentionally not gated here.
   if (!tryClaimOrder(orderId)) {
     return NextResponse.json({ received: true, acted: false, deduped: true });
   }
 
   const rawTags = parsed.data?.order?.order_tags ?? null;
   const tags = decodeTags(rawTags);
-
-  // Browser context was snapshotted at create-order time across TWO tags:
-  //   - `ua`  : raw User-Agent (its own tag because UAs alone push past
-  //              Cashfree's 256-char-per-value cap)
-  //   - `ctx` : packed JSON of {fbc, fbp, ip}
-  // eventSourceUrl is intentionally not stored — it falls back to the
-  // canonical /checkout URL on the brand domain a few lines below.
-  // Without these snapshots the webhook would fire CAPI with blank
-  // IP/UA/fbc/fbp — exactly the EMQ-killing miss this whole rewrite
-  // architects around.
   const ctx = unpackBrowserContext(tags.ctx);
   const userAgentSnapshot = tags.ua ?? "";
 
@@ -197,38 +165,24 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const utm = rebuildUtmFromTags(tags);
   const { bumpsLine, bumpsTotal, bumpItems } = resolveBumps(tags.bumps);
-  const basePrice = clientConfig.pricing.price;
+  // OTO has no base price — the grand total is the sum of add-ons.
   const grandTotal =
     typeof parsed.data?.order?.order_amount === "number"
       ? parsed.data.order.order_amount
-      : basePrice + bumpsTotal;
+      : bumpsTotal;
 
   const cfPaymentRaw = parsed.data?.payment?.cf_payment_id;
   const paymentId = cfPaymentRaw ? String(cfPaymentRaw) : orderId;
   const currency =
     parsed.data?.order?.order_currency ?? clientConfig.pricing.currency;
 
-  // ---- CAPI gating ----
-  // Critically, NO isProductionHost check here: this route is invoked by
-  // Cashfree's servers, not by the brand domain. Host-based gating would
-  // block every webhook-driven fire. Real-vs-test is gated by
-  // CASHFREE_API_MODE instead — sandbox payments can't fire CAPI.
+  // ---- CAPI gating: production Cashfree mode + real charge (> ₹1). ----
   const cashfreeMode = getCashfreeMode();
   const isRealCharge = grandTotal > 1;
   const capiAllowed =
-    clientConfig.capi.enabled &&
-    cashfreeMode === "production" &&
-    isRealCharge;
+    clientConfig.capi.enabled && cashfreeMode === "production" && isRealCharge;
 
-  // event_source_url is always the canonical checkout URL on the brand domain.
-  // We don't snapshot the per-request URL (e.g. with UTM params) because it
-  // would blow Cashfree's 256-char tag cap. Meta is permissive about
-  // event_source_url as long as it matches a domain registered against the
-  // pixel. Shared by the server CAPI fire and the Pabbly enrichment so both
-  // report the same URL.
-  const eventSourceUrl = `https://${clientConfig.brand.domain}/checkout`;
-  // is_test mirrors the inverse of the CAPI real-charge gate: sandbox mode or
-  // sub-₹1 charges are tests. Feeds the Pabbly is_test column.
+  const eventSourceUrl = `https://${clientConfig.brand.domain}/${clientConfig.funnel.slug}/checkout`;
   const isTest = !(cashfreeMode === "production" && isRealCharge);
 
   let capiAttempted = false;
@@ -236,13 +190,9 @@ export async function POST(request: Request): Promise<NextResponse> {
   let capiSkipReason = "";
 
   if (!capiAllowed) {
-    if (!clientConfig.capi.enabled) {
-      capiSkipReason = "capi_disabled";
-    } else if (cashfreeMode !== "production") {
-      capiSkipReason = "not_production_mode";
-    } else if (!isRealCharge) {
-      capiSkipReason = "amount_below_threshold";
-    }
+    if (!clientConfig.capi.enabled) capiSkipReason = "capi_disabled";
+    else if (cashfreeMode !== "production") capiSkipReason = "not_production_mode";
+    else if (!isRealCharge) capiSkipReason = "amount_below_threshold";
     console.log(
       `[cashfree-webhook] CAPI skipped — order=${orderId} reason=${capiSkipReason} mode=${cashfreeMode} amount=${grandTotal}`,
     );
@@ -250,7 +200,8 @@ export async function POST(request: Request): Promise<NextResponse> {
     capiAttempted = true;
     capiOutcome = await fireMetaCapiPurchase({
       customer,
-      eventName: clientConfig.capi.eventName,
+      standardEvent: clientConfig.capi.otoStandardEvent,
+      customEvent: clientConfig.capi.otoCustomEvent,
       value: grandTotal,
       currency,
       paymentId,
@@ -263,32 +214,21 @@ export async function POST(request: Request): Promise<NextResponse> {
     });
   }
 
-  const cashfreeEventReceivedAt = new Date().toISOString();
-
-  // Pabbly is the single source of truth for the Google Sheet now. The
-  // capi_* diagnostic columns let us audit exactly why any given row's
-  // Meta event did/didn't fire. Pabbly fire happens unconditionally
-  // (provided we won the tryClaimOrder above) so the sheet stays complete
-  // even when CAPI is gated off.
-  await firePabblyWebhook({
+  await firePabblyPurchase({
     customer,
     utm,
     paymentId,
     orderId,
     amount: grandTotal,
-    basePrice,
     bumpsTotal,
     bumps: bumpsLine,
     bumpItems,
     currency,
     timezone: clientConfig.event.timezone,
-    source: "webhook",
+    source: "oto",
     capiAttempted,
     capiOutcome,
     capiSkipReason,
-    cashfreeEventReceivedAt,
-    // CAPI downstream-feedback enrichment — identity signals rebuilt from the
-    // order_tags snapshot so the CRM sheet can fire high-EMQ lifecycle events.
     fbc: ctx.fbc ?? "",
     fbp: ctx.fbp ?? "",
     clientIpAddress: ctx.ip ?? "",
@@ -297,9 +237,5 @@ export async function POST(request: Request): Promise<NextResponse> {
     isTest,
   });
 
-  // Always 200 to Cashfree. A non-200 here would trigger retries which,
-  // post-tryClaimOrder cache TTL or across Lambdas, could duplicate the
-  // Pabbly row. CAPI failures are already captured in the Pabbly row
-  // (`capi_outcome`) and Vercel logs — we don't need to involve Cashfree.
   return NextResponse.json({ received: true, acted: true });
 }
