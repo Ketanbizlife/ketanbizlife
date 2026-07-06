@@ -147,6 +147,33 @@ export async function firePabblyWebhook(args: {
     capi_skip_reason: args.capiSkipReason,
   };
 
+  // Fire the primary Pabbly webhook and the optional mirror in PARALLEL with
+  // the IDENTICAL payload. Each has its own timeout + try/catch so one failing
+  // (or being unset) never blocks or fails the other. Both are awaited so the
+  // serverless function doesn't return before the network round-trips finish.
+  const targets: Array<{ label: string; url: string }> = [];
+  if (pabblyUrl) targets.push({ label: "pabbly", url: pabblyUrl });
+  if (mirrorUrl) targets.push({ label: "mirror", url: mirrorUrl });
+
+  await Promise.all(
+    targets.map(({ label, url }) =>
+      postRegistrationWebhook(label, url, payload, args.leadId),
+    ),
+  );
+}
+
+/**
+ * POST a registration payload to a single webhook target with a 5s timeout.
+ * Never throws — logs the outcome so a failing mirror can't break the primary
+ * fire (or the caller's response). Shared by the primary + mirror targets so
+ * their payload is byte-identical.
+ */
+async function postRegistrationWebhook(
+  label: string,
+  url: string,
+  payload: Record<string, unknown>,
+  leadId: string,
+): Promise<void> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 5000);
   try {
@@ -159,16 +186,16 @@ export async function firePabblyWebhook(args: {
     if (!res.ok) {
       const text = await res.text().catch(() => "<no body>");
       console.warn(
-        `[pabbly] webhook returned ${res.status} for lead ${args.leadId}: ${text}`,
+        `[pabbly] ${label} webhook returned ${res.status} for lead ${leadId}: ${text}`,
       );
     } else {
       console.log(
-        `[pabbly] webhook OK ${res.status} for lead ${args.leadId}`,
+        `[pabbly] ${label} webhook OK ${res.status} for lead ${leadId}`,
       );
     }
   } catch (err) {
     console.warn(
-      `[pabbly] webhook failed for lead ${args.leadId}:`,
+      `[pabbly] ${label} webhook failed for lead ${leadId}:`,
       err instanceof Error ? err.message : err,
     );
   } finally {
