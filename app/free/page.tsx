@@ -18,8 +18,7 @@ import { WhoSection } from "@/components/WhoSection";
 import { clientConfig } from "@/client.config";
 
 export const metadata: Metadata = {
-  title:
-    "For Indian Exporters Stuck in the Same Loop — Free Live Sunday Webinar",
+  title: `For Indian Exporters Stuck in the Same Loop — Free Live ${clientConfig.event.dayLabel} Webinar`,
   description: `Buyer ko price diya. Buyer gayab ho gaya. Phir se. 8/10 Indian exporters fail — not because of documents, but because nobody taught them how to find real buyers. Free live webinar · ${clientConfig.event.dateLabel}, ${clientConfig.event.timeLabel}.`,
 };
 

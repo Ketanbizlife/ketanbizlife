@@ -7,7 +7,8 @@
   },
   "permissions": {
     "allow": [
-      "PowerShell(npm *)"
+      "PowerShell(npm *)",
+      "Bash(git push:*)"
     ]
   }
 }

@@ -44,6 +44,16 @@ const WEBINAR_DATE_SHORT_LABEL = str(
   process.env.NEXT_PUBLIC_WEBINAR_DATE_SHORT_LABEL,
   "Sunday, 31st May",
 );
+/**
+ * Day-of-week word ("Sunday", "Monday", …) referenced throughout the /free
+ * funnel copy — Hinglish sentences like "Sunday ko 3 ghante join karo" and
+ * English lines like "See you Sunday." Change this alongside the date envs
+ * on every webinar rollover so the day-word matches WEBINAR_DATE_LABEL.
+ */
+const WEBINAR_DAY_LABEL = str(
+  process.env.NEXT_PUBLIC_WEBINAR_DAY_LABEL,
+  "Sunday",
+);
 const WEBINAR_TIME_LABEL = str(
   process.env.NEXT_PUBLIC_WEBINAR_TIME_LABEL,
   "10:45 AM IST",
@@ -214,6 +224,9 @@ export interface ClientConfig {
     dateLabel: string;
     /** Short-form date (no year) — for tight UI surfaces. */
     dateShortLabel: string;
+    /** Day-of-week word (e.g., "Sunday") — feeds Hinglish + English copy that
+     *  references the webinar day by name across the funnel + thank-you page. */
+    dayLabel: string;
     countdownTargetISO: string;
     timeLabel: string;
     timezone: string;
@@ -473,6 +486,7 @@ export const clientConfig: ClientConfig = {
   event: {
     dateLabel: WEBINAR_DATE_LABEL,
     dateShortLabel: WEBINAR_DATE_SHORT_LABEL,
+    dayLabel: WEBINAR_DAY_LABEL,
     countdownTargetISO: WEBINAR_COUNTDOWN_ISO,
     timeLabel: WEBINAR_TIME_LABEL,
     timezone: "Asia/Kolkata",
@@ -576,7 +590,7 @@ export const clientConfig: ClientConfig = {
           "This webinar fixes the problem of not getting consistent buyers and gives you the follow-up approach that converts.",
       },
     ],
-    closingLine: "Different starting points. One framework. One Sunday.",
+    closingLine: `Different starting points. One framework. One ${WEBINAR_DAY_LABEL}.`,
     ctaText: "Register Free",
   },
 
@@ -628,8 +642,8 @@ export const clientConfig: ClientConfig = {
   // -------- SECTION 5 — Old You vs New You --------
   transformation: {
     heading: "Old You vs New You",
-    headerOld: "BEFORE SUNDAY",
-    headerNext: "AFTER SUNDAY",
+    headerOld: `BEFORE ${WEBINAR_DAY_LABEL}`,
+    headerNext: `AFTER ${WEBINAR_DAY_LABEL}`,
     rows: [
       {
         old: "Daily price quote bhej rahe ho. Buyer gayab ho raha hai.",
@@ -652,12 +666,12 @@ export const clientConfig: ClientConfig = {
         next: "Real exporter dekha jo padhata bhi hai. 2 export brands, ₹100+ crore in shipments.",
       },
     ],
-    outro: "Ek Sunday. Bilkul Free. Live webinar.",
+    outro: `Ek ${WEBINAR_DAY_LABEL}. Bilkul Free. Live webinar.`,
   },
 
   // -------- SECTION 6 — Identity Outcomes --------
   identityBadges: {
-    heading: "After This Sunday, Tum Wahi Exporter Ban Jaate Ho Jo…",
+    heading: `After This ${WEBINAR_DAY_LABEL}, Tum Wahi Exporter Ban Jaate Ho Jo…`,
     badges: [
       "…buyer ke “send your price” message ka professional reply de sakta hai. Without giving the actual price first.",
       "…Meta Ads Library mein search karke real importers shortlist kar sakta hai. Apne product category mein.",
@@ -770,7 +784,7 @@ export const clientConfig: ClientConfig = {
     heading: "Bilkul Free. Koi Hidden Charge Nahi.",
     paragraphs: [
       "Yeh webinar bilkul free hai. Koi payment nahi, koi credit card nahi. Bas apni details do aur seat reserve karo.",
-      "Sunday ko 3 ghante live join karo — wahi system jo Mein 10+ saal se 2 export brands ke saath use karta hoon.",
+      `${WEBINAR_DAY_LABEL} ko 3 ghante live join karo — wahi system jo Mein 10+ saal se 2 export brands ke saath use karta hoon.`,
     ],
     ctaText: "Register Free",
   },
@@ -783,7 +797,7 @@ export const clientConfig: ClientConfig = {
       "“Overnight crorepati” banne ka jhootha vaada. Real first-order ka realistic timeline 1 se 3 mahine hai.",
       "Spice, fruit, ya vegetable export ka push. Yeh hum aapko nahi dhakelte.",
       "10-saal purani buyer lists. Hum aapko methods sikhate hain, lists nahi bechtey.",
-      "Mandatory subscription ya 12-mahine ka ad lock-in. Yeh webinar bilkul free hai, sirf ek Sunday ki commitment.",
+      `Mandatory subscription ya 12-mahine ka ad lock-in. Yeh webinar bilkul free hai, sirf ek ${WEBINAR_DAY_LABEL} ki commitment.`,
     ],
   },
 
@@ -797,7 +811,7 @@ export const clientConfig: ClientConfig = {
           "Indian manufacturers, traders, aur sourcing agents jo physical goods export karna chahte hain. Doesn’t matter agar aapne abhi tak ek bhi order nahi kiya ya already 1 container har 2-3 mahine kar rahe ho.",
       },
       {
-        question: "Recording milegi agar Sunday miss kar diya?",
+        question: `Recording milegi agar ${WEBINAR_DAY_LABEL} miss kar diya?`,
         answer:
           "Haan. Sabhi registered attendees ko 1-Year Recording Access milta hai. Lekin live attend karna best hai. Recording aapka backup hai.",
       },
@@ -854,7 +868,7 @@ export const clientConfig: ClientConfig = {
     bonusesHeading: "5 Free Bonuses Included With Your Free Registration",
     bumpsHeading: "Smart Add-ons (Optional)",
     bumpsSubheading:
-      "Tools that turn what you learn on Sunday into closed deals next week.",
+      `Tools that turn what you learn on ${WEBINAR_DAY_LABEL} into closed deals next week.`,
     // --- Paid OTO offers — preserved for the future one-time-offer page. ---
     bumps: [
       {
@@ -872,7 +886,7 @@ export const clientConfig: ClientConfig = {
         insight:
           "Most exporters don’t lose deals. They lose time on the wrong buyers.",
         callToAction:
-          "Use this checklist immediately after Sunday’s webinar.",
+          `Use this checklist immediately after ${WEBINAR_DAY_LABEL}’s webinar.`,
         image: "/oto/buyer-qualification.webp",
         otoTagline: "Spot serious buyers in minutes — stop wasting time on time-passers.",
       },
@@ -991,7 +1005,7 @@ export const clientConfig: ClientConfig = {
           body: "Your tools are delivered digitally to the email and WhatsApp number you used at checkout — usually within a couple of minutes.",
         },
         {
-          title: "Save them for Sunday",
+          title: `Save them for ${WEBINAR_DAY_LABEL}`,
           body: "Keep these handy during the live webinar — you’ll know exactly where to apply each one as Ketan walks through the system.",
         },
       ],

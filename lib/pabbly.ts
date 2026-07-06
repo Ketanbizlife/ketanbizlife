@@ -65,12 +65,20 @@ export async function firePabblyWebhook(args: {
   /** True for non-production hosts (localhost / preview); drives is_test. */
   isTest: boolean;
 }): Promise<void> {
-  const url = process.env.PABBLY_WEBHOOK_URL;
+  const pabblyUrl = process.env.PABBLY_WEBHOOK_URL;
+  // Optional mirror endpoint — fired with the IDENTICAL payload in parallel
+  // with the primary Pabbly webhook. Useful when we want a second automation
+  // (different Pabbly workflow, Make/Zapier, custom endpoint) to receive the
+  // exact same registration event without any per-target payload divergence.
+  // Silently skipped when unset, so this is safe to leave blank in dev.
+  const mirrorUrl = process.env.REGISTRATION_MIRROR_WEBHOOK_URL;
   console.log(
-    `[pabbly] fire start leadId=${args.leadId} email=${args.customer.email} hasUrl=${Boolean(url)}`,
+    `[pabbly] fire start leadId=${args.leadId} email=${args.customer.email} hasPabbly=${Boolean(pabblyUrl)} hasMirror=${Boolean(mirrorUrl)}`,
   );
-  if (!url) {
-    console.warn("[pabbly] PABBLY_WEBHOOK_URL not set — skipping webhook fire");
+  if (!pabblyUrl && !mirrorUrl) {
+    console.warn(
+      "[pabbly] neither PABBLY_WEBHOOK_URL nor REGISTRATION_MIRROR_WEBHOOK_URL set — skipping webhook fire",
+    );
     return;
   }
 

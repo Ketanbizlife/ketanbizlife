@@ -8,7 +8,7 @@ import { clientConfig } from "@/client.config";
 import styles from "./page.module.css";
 
 export const metadata: Metadata = {
-  title: "You're In — See You Sunday",
+  title: `You're In — See You ${clientConfig.event.dayLabel}`,
   description:
     "Your seat is reserved for the Indian Export Insider Workshop. Zoom link, calendar invite, and next steps inside.",
   robots: {
@@ -77,7 +77,7 @@ export default function ThankYouPage() {
     {
       icon: "calendar" as const,
       title: "Save the date",
-      body: "Block 3 hours on Sunday morning. Add the workshop to your calendar with one tap below.",
+      body: `Block 3 hours on ${clientConfig.event.dayLabel} morning. Add the workshop to your calendar with one tap below.`,
     },
     {
       icon: "message" as const,
@@ -234,7 +234,7 @@ export default function ThankYouPage() {
       <section className={`light ${styles.signoffBlock}`}>
         <div className={`container-narrow ${styles.signoffInner}`}>
           <span className={styles.signoffRule} aria-hidden="true" />
-          <p className={styles.signoff}>See you Sunday.</p>
+          <p className={styles.signoff}>See you {clientConfig.event.dayLabel}.</p>
           <p className={styles.signoffName}>— Ketan</p>
         </div>
       </section>

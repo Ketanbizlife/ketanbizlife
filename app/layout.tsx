@@ -32,8 +32,7 @@ export const metadata: Metadata = {
     default: `${clientConfig.brand.name} · Find Real Export Buyers Using AI`,
     template: `%s · ${clientConfig.brand.name}`,
   },
-  description:
-    "8 out of 10 Indian exporters fail. Not because of documents — because nobody taught them how to find real buyers. Free live 3-hour Sunday webinar with Ketan: 2 proven buyer-finding systems for Indian exporters.",
+  description: `8 out of 10 Indian exporters fail. Not because of documents — because nobody taught them how to find real buyers. Free live 3-hour ${clientConfig.event.dayLabel} webinar with Ketan: 2 proven buyer-finding systems for Indian exporters.`,
   keywords: [
     "export buyers",
     "indian exporters",
@@ -48,14 +47,12 @@ export const metadata: Metadata = {
     locale: "en_IN",
     siteName: clientConfig.brand.name,
     title: `${clientConfig.brand.name} · Indian Export Insider Workshop`,
-    description:
-      "Free live 3-hour Sunday webinar. 2 proven buyer-finding systems for Indian exporters. Register free.",
+    description: `Free live 3-hour ${clientConfig.event.dayLabel} webinar. 2 proven buyer-finding systems for Indian exporters. Register free.`,
   },
   twitter: {
     card: "summary_large_image",
     title: `${clientConfig.brand.name} · Indian Export Insider Workshop`,
-    description:
-      "Free live 3-hour Sunday webinar. 2 proven buyer-finding systems for Indian exporters.",
+    description: `Free live 3-hour ${clientConfig.event.dayLabel} webinar. 2 proven buyer-finding systems for Indian exporters.`,
   },
   robots: {
     index: true,
