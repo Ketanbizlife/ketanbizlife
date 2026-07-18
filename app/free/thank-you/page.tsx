@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Countdown } from "@/components/Countdown";
 import { FooterMini } from "@/components/FooterMini";
 import { Icon } from "@/components/Icon";
+import { JoinWhatsappLink } from "@/components/JoinWhatsappLink";
 import { MamReapply } from "@/components/MamReapply";
 import { clientConfig } from "@/client.config";
 import styles from "./page.module.css";
@@ -136,10 +137,8 @@ export default function ThankYouPage() {
           </div>
 
           {community ? (
-            <Link
+            <JoinWhatsappLink
               href={community}
-              target="_blank"
-              rel="noopener noreferrer"
               className={styles.heroWhatsapp}
             >
               <span className={styles.heroWaIcon} aria-hidden="true">
@@ -168,7 +167,7 @@ export default function ThankYouPage() {
                 Join
                 <span className={styles.heroWaArrow}>→</span>
               </span>
-            </Link>
+            </JoinWhatsappLink>
           ) : null}
         </div>
       </section>

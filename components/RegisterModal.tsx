@@ -12,6 +12,7 @@ import { parsePhoneNumberFromString } from "libphonenumber-js";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { ClientConfig } from "@/client.config";
 import { setMetaAdvancedMatching, trackRegistrationPixel } from "@/lib/analytics";
+import { trackGa4EventOnce } from "@/lib/ga4";
 import { readCookie, readUtmFromStorage, utmToQueryString } from "@/lib/utm";
 import { persistLead } from "@/lib/lead";
 import { COUNTRY_CODES } from "@/lib/countryCodes";
@@ -122,6 +123,11 @@ export function RegisterModal({ config }: Props) {
       const trigger = target.closest("[data-register-cta]");
       if (trigger) {
         e.preventDefault();
+        // GA4 add_to_cart — any info-page CTA advancing toward the register
+        // form. Once per browser; independent of Meta. Fired here because every
+        // CTA (hero, sections, sticky bar, floating countdown) routes through
+        // this single delegated handler.
+        trackGa4EventOnce("add_to_cart");
         openModal();
       }
     }
@@ -196,6 +202,13 @@ export function RegisterModal({ config }: Props) {
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setGlobalError(null);
+
+    // GA4 initiate_checkout — fires on the FIRST Pay/submit click, BEFORE
+    // validation, capturing the attempt to register (a half-filled form that
+    // bounces off validation still counts). Once per browser; independent of
+    // Meta. Note: our Meta CAPI CompleteRegistration fires only AFTER a valid
+    // submit + successful /api/register — a separate, cleaner signal.
+    trackGa4EventOnce("initiate_checkout");
 
     const fieldErrors = validate(state);
     setErrors(fieldErrors);
