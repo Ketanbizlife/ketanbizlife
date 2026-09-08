@@ -530,7 +530,7 @@ export const clientConfig: ClientConfig = {
     priceAnchor: formatINR(WEBINAR_ANCHOR_PRICE),
     priceActual: "Free",
     priceSuffix: "limited seats",
-    primaryCtaText: "Register Free",
+    primaryCtaText: "Register at ₹99",
     trustLine: "Live on Zoom · Hindi me · 3 ghante actionable content",
     refundLine:
       "100% Free. Koi credit card nahi. Koi hidden charge nahi.",
@@ -679,7 +679,7 @@ export const clientConfig: ClientConfig = {
       "…follow-up ko system se chalata hai, mood se nahi. Country-specific timelines pata hain.",
     ],
     outro: `${WEBINAR_DATE_SHORT_LABEL}. Bilkul Free. Live webinar.`,
-    ctaText: "Register Free",
+    ctaText: "Register at ₹99",
   },
 
   // -------- SECTION 7 — Bonuses (NEW) --------
@@ -786,7 +786,7 @@ export const clientConfig: ClientConfig = {
       "Yeh webinar bilkul free hai. Koi payment nahi, koi credit card nahi. Bas apni details do aur seat reserve karo.",
       `${WEBINAR_DAY_LABEL} ko 3 ghante live join karo — wahi system jo Mein 10+ saal se 2 export brands ke saath use karta hoon.`,
     ],
-    ctaText: "Register Free",
+    ctaText: "Register at ₹99",
   },
 
   // -------- SECTION 11 — Anti-Positioning --------
@@ -850,7 +850,7 @@ export const clientConfig: ClientConfig = {
       "Aap spice, fruit, ya vegetable export specialist banna chahte ho. Yeh webinar physical hard goods ke liye optimized hai.",
     ],
     closing: "Agar Yeh Sab Aapke Liye OK Hai, Tab:",
-    ctaText: "Register Free",
+    ctaText: "Register at ₹99",
     fineprint:
       "Free registration. Zoom link aur reminders aapke WhatsApp aur email pe aayenge.",
   },
