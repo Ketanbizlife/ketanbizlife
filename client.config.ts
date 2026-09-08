@@ -591,7 +591,7 @@ export const clientConfig: ClientConfig = {
       },
     ],
     closingLine: `Different starting points. One framework. One ${WEBINAR_DAY_LABEL}.`,
-    ctaText: "Register Free",
+    ctaText: "Register at ₹99",
   },
 
   // -------- SECTION 4 — What This 3-Hour Webinar Covers --------
@@ -636,7 +636,7 @@ export const clientConfig: ClientConfig = {
         ],
       },
     ],
-    ctaText: "Register Free",
+    ctaText: "Register at ₹99",
   },
 
   // -------- SECTION 5 — Old You vs New You --------
