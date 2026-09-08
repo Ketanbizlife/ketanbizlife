@@ -1,14 +1,12 @@
 "use client";
-
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Icon } from "./Icon";
 import styles from "./FloatingCountdown.module.css";
-
 interface Props {
   targetISO: string;
   ctaLabel?: string;
 }
-
 interface TimeLeft {
   days: number;
   hours: number;
@@ -16,7 +14,6 @@ interface TimeLeft {
   seconds: number;
   expired: boolean;
 }
-
 function computeTimeLeft(targetISO: string): TimeLeft {
   const target = new Date(targetISO).getTime();
   const now = Date.now();
@@ -29,24 +26,15 @@ function computeTimeLeft(targetISO: string): TimeLeft {
     expired: totalSeconds === 0,
   };
 }
-
 function pad(n: number): string {
   return n.toString().padStart(2, "0");
 }
-
-/**
- * Sticky countdown bar at the bottom of the viewport. Visible from page
- * load on all viewports. Footer carries enough bottom padding so this bar
- * never visually covers the disclaimer / legal links when scrolled to the
- * end of the page.
- */
 export function FloatingCountdown({
   targetISO,
-  ctaLabel = "Register Free",
+  ctaLabel = "Register at ₹99",
 }: Props) {
   const [mounted, setMounted] = useState(false);
   const [time, setTime] = useState<TimeLeft>(() => computeTimeLeft(targetISO));
-
   useEffect(() => {
     setMounted(true);
     setTime(computeTimeLeft(targetISO));
@@ -55,13 +43,7 @@ export function FloatingCountdown({
     }, 1000);
     return () => clearInterval(interval);
   }, [targetISO]);
-
-  // Render nothing until mounted (avoids an SSR/client countdown mismatch).
-  // IMPORTANT: we do NOT hide the bar when the countdown expires — the CTA is a
-  // primary conversion element and must stay visible. When expired we just swap
-  // the timer for an urgency label.
   if (!mounted) return null;
-
   return (
     <div
       className={styles.bar}
@@ -80,7 +62,6 @@ export function FloatingCountdown({
               <Icon name="clock" size={14} />
               <span>Webinar in</span>
             </div>
-
             <div className={styles.cells}>
               <Cell value={pad(time.days)} unit="d" />
               <Cell value={pad(time.hours)} unit="h" />
@@ -89,21 +70,18 @@ export function FloatingCountdown({
             </div>
           </>
         )}
-
-        <button
-          type="button"
-          data-register-cta
+        <Link
+          href="https://payments.cashfree.com/forms/export-unstuck-newlp"
           className={styles.cta}
-          aria-label={`${ctaLabel} for the free webinar`}
+          aria-label={`${ctaLabel} for the webinar`}
         >
           <span>{ctaLabel}</span>
           <Icon name="arrow-right" size={14} />
-        </button>
+        </Link>
       </div>
     </div>
   );
 }
-
 function Cell({ value, unit }: { value: string; unit: string }) {
   return (
     <span className={styles.cell}>
