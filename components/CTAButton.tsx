@@ -1,10 +1,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import styles from "./CTAButton.module.css";
-
 type Variant = "primary" | "secondary";
 type Size = "default" | "large";
-
 interface BaseProps {
   children: ReactNode;
   variant?: Variant;
@@ -12,28 +10,21 @@ interface BaseProps {
   withArrow?: boolean;
   ariaLabel?: string;
   /**
-   * When true, renders a plain button carrying `data-register-cta`. The
-   * RegisterModal (mounted once per page) catches clicks via event delegation
-   * and opens the free-registration modal — no href, no onClick needed, so
-   * this stays usable from server components.
+   * When true, renders a link to the Cashfree hosted payment page.
    */
   opensRegister?: boolean;
 }
-
 interface ButtonProps extends BaseProps {
   href?: undefined;
   onClick?: () => void;
   type?: "button" | "submit";
   disabled?: boolean;
 }
-
 interface LinkProps extends BaseProps {
   href: string;
   onClick?: () => void;
 }
-
 type Props = ButtonProps | LinkProps;
-
 export function CTAButton(props: Props) {
   const {
     children,
@@ -43,13 +34,11 @@ export function CTAButton(props: Props) {
     ariaLabel,
     opensRegister,
   } = props;
-
   const className = [
     styles.btn,
     styles[variant],
     styles[size],
   ].join(" ");
-
   const inner = (
     <>
       <span className={styles.label}>{children}</span>
@@ -60,20 +49,17 @@ export function CTAButton(props: Props) {
       ) : null}
     </>
   );
-
   if (opensRegister) {
     return (
-      <button
+      <Link
+        href="https://payments.cashfree.com/forms/export-unstuck-newlp"
         className={className}
-        type="button"
-        data-register-cta
         aria-label={ariaLabel}
       >
         {inner}
-      </button>
+      </Link>
     );
   }
-
   if ("href" in props && props.href !== undefined) {
     return (
       <Link
@@ -86,7 +72,6 @@ export function CTAButton(props: Props) {
       </Link>
     );
   }
-
   return (
     <button
       className={className}
