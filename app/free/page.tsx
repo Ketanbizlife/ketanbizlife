@@ -80,7 +80,7 @@ export default function FunnelPage() {
 
       <FloatingCountdown
         targetISO={clientConfig.event.countdownTargetISO}
-        ctaLabel="Register Free"
+        ctaLabel="Register at ₹99"
       />
 
       {/* Free-registration modal — opened by any [data-register-cta] element. */}
